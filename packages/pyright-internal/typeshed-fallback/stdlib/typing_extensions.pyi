@@ -2,75 +2,192 @@ import abc
 import enum
 import sys
 from _collections_abc import dict_items, dict_keys, dict_values
-from _typeshed import AnnotationForm, IdentityFunction, Incomplete, Unused
 from collections.abc import (
     AsyncGenerator as AsyncGenerator,
+)
+from collections.abc import (
     AsyncIterable as AsyncIterable,
+)
+from collections.abc import (
     AsyncIterator as AsyncIterator,
+)
+from collections.abc import (
     Awaitable as Awaitable,
+)
+from collections.abc import (
     Collection as Collection,
+)
+from collections.abc import (
     Container as Container,
+)
+from collections.abc import (
     Coroutine as Coroutine,
+)
+from collections.abc import (
     Generator as Generator,
+)
+from collections.abc import (
     Hashable as Hashable,
+)
+from collections.abc import (
     ItemsView as ItemsView,
+)
+from collections.abc import (
     Iterable as Iterable,
+)
+from collections.abc import (
     Iterator as Iterator,
+)
+from collections.abc import (
     KeysView as KeysView,
+)
+from collections.abc import (
     Mapping as Mapping,
+)
+from collections.abc import (
     MappingView as MappingView,
+)
+from collections.abc import (
     MutableMapping as MutableMapping,
+)
+from collections.abc import (
     MutableSequence as MutableSequence,
+)
+from collections.abc import (
     MutableSet as MutableSet,
+)
+from collections.abc import (
     Reversible as Reversible,
+)
+from collections.abc import (
     Sequence as Sequence,
+)
+from collections.abc import (
     Sized as Sized,
+)
+from collections.abc import (
     ValuesView as ValuesView,
 )
-from contextlib import AbstractAsyncContextManager as AsyncContextManager, AbstractContextManager as ContextManager
-from re import Match as Match, Pattern as Pattern
+from contextlib import AbstractAsyncContextManager as AsyncContextManager
+from contextlib import AbstractContextManager as ContextManager
+from re import Match as Match
+from re import Pattern as Pattern
 from types import GenericAlias, ModuleType, UnionType
 from typing import (  # noqa: Y022,Y037,Y038,Y039,UP035
     IO as IO,
+)
+from typing import (
     TYPE_CHECKING as TYPE_CHECKING,
+)
+from typing import (
     AbstractSet as AbstractSet,
+)
+from typing import (
     Any as Any,
+)
+from typing import (
     AnyStr as AnyStr,
+)
+from typing import (
     BinaryIO as BinaryIO,
+)
+from typing import (
     Callable as Callable,
+)
+from typing import (
     ChainMap as ChainMap,
+)
+from typing import (
     ClassVar as ClassVar,
+)
+from typing import (
     Concatenate as Concatenate,
+)
+from typing import (
     Counter as Counter,
+)
+from typing import (
     DefaultDict as DefaultDict,
+)
+from typing import (
     Deque as Deque,
+)
+from typing import (
     Dict as Dict,
+)
+from typing import (
     ForwardRef as ForwardRef,
+)
+from typing import (
     FrozenSet as FrozenSet,
+)
+from typing import (
     Generic as Generic,
+)
+from typing import (
     List as List,
+)
+from typing import (
     NoReturn as NoReturn,
+)
+from typing import (
     Optional as Optional,
+)
+from typing import (
     ParamSpecArgs as ParamSpecArgs,
+)
+from typing import (
     ParamSpecKwargs as ParamSpecKwargs,
+)
+from typing import (
     Set as Set,
+)
+from typing import (
     Text as Text,
+)
+from typing import (
     TextIO as TextIO,
+)
+from typing import (
     Tuple as Tuple,
+)
+from typing import (
     Type as Type,
+)
+from typing import (
     TypeAlias as TypeAlias,
+)
+from typing import (
     TypedDict as TypedDict,
+)
+from typing import (
     TypeGuard as TypeGuard,
+)
+from typing import (
     TypeVar as _TypeVar,
+)
+from typing import (
     Union as Union,
+)
+from typing import (
     _Alias,
     _SpecialForm,
-    cast as cast,
-    is_typeddict as is_typeddict,
-    no_type_check as no_type_check,
-    overload as overload,
     type_check_only,
 )
+from typing import (
+    cast as cast,
+)
+from typing import (
+    is_typeddict as is_typeddict,
+)
+from typing import (
+    no_type_check as no_type_check,
+)
+from typing import (
+    overload as overload,
+)
+
+from _typeshed import AnnotationForm, IdentityFunction, Incomplete, Unused
 
 # Please keep order the same as at runtime.
 __all__ = [
@@ -80,6 +197,7 @@ __all__ = [
     "Concatenate",
     "Final",
     "LiteralString",
+    "Map",
     "ParamSpec",
     "ParamSpecArgs",
     "ParamSpecKwargs",
@@ -299,18 +417,44 @@ _AnnotatedAlias: Any  # undocumented
 if sys.version_info >= (3, 11):
     from typing import (
         LiteralString as LiteralString,
+    )
+    from typing import (
         NamedTuple as NamedTuple,
+    )
+    from typing import (
         Never as Never,
+    )
+    from typing import (
         NewType as NewType,
+    )
+    from typing import (
         NotRequired as NotRequired,
+    )
+    from typing import (
         Required as Required,
+    )
+    from typing import (
         Self as Self,
+    )
+    from typing import (
         Unpack as Unpack,
+    )
+    from typing import (
         assert_never as assert_never,
+    )
+    from typing import (
         assert_type as assert_type,
+    )
+    from typing import (
         clear_overloads as clear_overloads,
+    )
+    from typing import (
         dataclass_transform as dataclass_transform,
+    )
+    from typing import (
         get_overloads as get_overloads,
+    )
+    from typing import (
         reveal_type as reveal_type,
     )
 else:
@@ -365,12 +509,26 @@ if sys.version_info >= (3, 12):
     from types import get_original_bases as get_original_bases
     from typing import (
         SupportsAbs as SupportsAbs,
+    )
+    from typing import (
         SupportsBytes as SupportsBytes,
+    )
+    from typing import (
         SupportsComplex as SupportsComplex,
+    )
+    from typing import (
         SupportsFloat as SupportsFloat,
+    )
+    from typing import (
         SupportsIndex as SupportsIndex,
+    )
+    from typing import (
         SupportsInt as SupportsInt,
+    )
+    from typing import (
         SupportsRound as SupportsRound,
+    )
+    from typing import (
         override as override,
     )
 else:
@@ -434,7 +592,8 @@ else:
         def __round__(self, ndigits: int, /) -> _T_co: ...
 
 if sys.version_info >= (3, 14):
-    from io import Reader as Reader, Writer as Writer
+    from io import Reader as Reader
+    from io import Writer as Writer
 else:
     @runtime_checkable
     class Reader(Protocol[_T_co]):
@@ -452,12 +611,26 @@ if sys.version_info >= (3, 13):
     from types import CapsuleType as CapsuleType
     from typing import (
         NoDefault as NoDefault,
+    )
+    from typing import (
         ParamSpec as ParamSpec,
+    )
+    from typing import (
         ReadOnly as ReadOnly,
+    )
+    from typing import (
         TypeIs as TypeIs,
+    )
+    from typing import (
         TypeVar as TypeVar,
+    )
+    from typing import (
         TypeVarTuple as TypeVarTuple,
+    )
+    from typing import (
         get_protocol_members as get_protocol_members,
+    )
+    from typing import (
         is_protocol as is_protocol,
     )
     from warnings import deprecated as deprecated
@@ -602,12 +775,15 @@ NoExtraItems: _NoExtraItemsType
 
 # PEP 747
 TypeForm: _SpecialForm
+Map: _SpecialForm
 
 # PEP 649/749
 if sys.version_info >= (3, 14):
     from typing import evaluate_forward_ref as evaluate_forward_ref
 
-    from annotationlib import Format as Format, get_annotations as get_annotations, type_repr as type_repr
+    from annotationlib import Format as Format
+    from annotationlib import get_annotations as get_annotations
+    from annotationlib import type_repr as type_repr
 else:
     class Format(enum.IntEnum):
         VALUE = 1

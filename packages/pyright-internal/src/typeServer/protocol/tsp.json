@@ -254,7 +254,8 @@
                 "v0_2_0": "0.2.0",
                 "v0_3_0": "0.3.0",
                 "v0_4_0": "0.4.0",
-                "current": "0.4.1"
+                "v0_4_1": "0.4.1",
+                "current": "0.4.2"
             },
             "valueDocumentation": {
                 "v0_1_0": "Initial protocol version",
@@ -1283,10 +1284,31 @@
             }
         },
         "TypeVarType": {
-            "kind": "alias",
-            "type": {
-                "kind": "reference",
-                "name": "DeclaredType"
+            "kind": "interface",
+            "extends": [
+                {
+                    "name": "DeclaredType",
+                    "typeArguments": [
+                        {
+                            "kind": "literal",
+                            "value": "TypeVar"
+                        }
+                    ]
+                }
+            ],
+            "properties": {
+                "typeArgs": {
+                    "type": {
+                        "kind": "array",
+                        "elementType": {
+                            "kind": "reference",
+                            "name": "Type"
+                        }
+                    },
+                    "optional": true,
+                    "readonly": true,
+                    "documentation": "Type arguments supplied when this TypeVar is used as a type constructor. Example: For F[int], typeArgs = [int]."
+                }
             }
         },
         "Type": {

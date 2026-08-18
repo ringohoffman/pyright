@@ -2,6 +2,27 @@
     "version": "0.2.0",
     "configurations": [
         {
+        "name": "Jest: HKT single test",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "node",
+        "runtimeArgs": [
+            "./node_modules/jest/bin/jest.js",
+            "--config",
+            "jest.config.js",
+            "--runInBand",
+            "--forceExit",
+            "--testNamePattern",
+            "HigherKindedType8Pep695",
+            "--runTestsByPath",
+            "${workspaceFolder}/packages/pyright-internal/src/tests/typeEvaluator7.test.ts"
+        ],
+        "cwd": "${workspaceFolder}/packages/pyright-internal",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "skipFiles": ["<node_internals>/**"]
+        },
+        {
             "name": "Pyright CLI",
             "type": "node",
             "request": "launch",
@@ -32,6 +53,25 @@
             ]
         },
         {
+            "name": "Pyright HKT prototype (pyright-internal)",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/packages/pyright-internal/debug.js",
+            "preLaunchTask": "Build pyright-internal",
+            "args": [
+                "--typeshedpath",
+                "${workspaceRoot}/packages/pyright-internal/typeshed-fallback",
+                "--pythonpath",
+                "${workspaceRoot}/.venv/bin/python",
+                "--project",
+                "${workspaceRoot}/hkt-prototypes/pyarrow-cast/pyrightconfig.json",
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "outFiles": [
+                "${workspaceRoot}/packages/pyright-internal/out/**/*.js"
+            ]
+        },
+        {
             "name": "Pyright tests",
             "type": "node",
             "request": "launch",
@@ -47,7 +87,7 @@
             "name": "Pyright extension",
             "type": "extensionHost",
             "request": "launch",
-            "runtimeExecutable": "${workspaceRoot}/packages/vscode-pyright/dist/extension.js",
+            "runtimeExecutable": "${execPath}",
             "preLaunchTask": "npm: build:extension:dev",
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pyright",
@@ -66,7 +106,7 @@
             "name": "Pyright extension (watch)",
             "type": "extensionHost",
             "request": "launch",
-            "runtimeExecutable": "${workspaceRoot}/packages/vscode-pyright/dist/extension.js",
+            "runtimeExecutable": "${execPath}",
             "preLaunchTask": "Watch extension",
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pyright",
@@ -77,6 +117,35 @@
             ],
             "smartStep": true,
             "sourceMaps": true,
+            "outFiles": [
+                "${workspaceRoot}/packages/vscode-pyright/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Pyright HKT extension (watch)",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${execPath}",
+            "preLaunchTask": "Watch extension",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-pyright",
+                "--disable-extension=ms-python.vscode-pylance",
+                "--disable-extension=ms-python.isort",
+                "--disable-extension=ms-pyright.pyright",
+                "--disable-extension=GitHub.copilot-chat",
+                "${workspaceFolder}/hkt-prototypes/pyarrow-cast"
+            ],
+            "smartStep": true,
+            "sourceMaps": true,
+            "skipFiles": [
+                "<node_internals>/**",
+                "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/**"
+            ],
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/packages/vscode-pyright/**",
+                "${workspaceFolder}/packages/pyright-internal/**",
+                "!**/node_modules/**"
+            ],
             "outFiles": [
                 "${workspaceRoot}/packages/vscode-pyright/dist/**/*.js"
             ]

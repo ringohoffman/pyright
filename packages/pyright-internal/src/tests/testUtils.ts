@@ -181,45 +181,76 @@ export function validateResults(
 
     if (results[0].errors.length !== errorCount) {
         logDiagnostics(results[0].errors);
-        assert.fail(`Expected ${errorCount} errors, got ${results[0].errors.length}`);
+        assert.fail(
+            `Expected ${errorCount} errors, got ${results[0].errors.length}\n${formatDiagnosticMessages(
+                results[0].errors
+            )}`
+        );
     }
 
     if (results[0].warnings.length !== warningCount) {
         logDiagnostics(results[0].warnings);
-        assert.fail(`Expected ${warningCount} warnings, got ${results[0].warnings.length}`);
+        assert.fail(
+            `Expected ${warningCount} warnings, got ${results[0].warnings.length}\n${formatDiagnosticMessages(
+                results[0].warnings
+            )}`
+        );
     }
 
     if (infoCount !== undefined) {
         if (results[0].infos.length !== infoCount) {
             logDiagnostics(results[0].infos);
-            assert.fail(`Expected ${infoCount} infos, got ${results[0].infos.length}`);
+            assert.fail(
+                `Expected ${infoCount} infos, got ${results[0].infos.length}\n${formatDiagnosticMessages(
+                    results[0].infos
+                )}`
+            );
         }
     }
 
     if (unusedCode !== undefined) {
         if (results[0].unusedCodes.length !== unusedCode) {
             logDiagnostics(results[0].unusedCodes);
-            assert.fail(`Expected ${unusedCode} unused, got ${results[0].unusedCodes.length}`);
+            assert.fail(
+                `Expected ${unusedCode} unused, got ${results[0].unusedCodes.length}\n${formatDiagnosticMessages(
+                    results[0].unusedCodes
+                )}`
+            );
         }
     }
 
     if (unreachableCode !== undefined) {
         if (results[0].unreachableCodes.length !== unreachableCode) {
             logDiagnostics(results[0].unreachableCodes);
-            assert.fail(`Expected ${unreachableCode} unreachable, got ${results[0].unreachableCodes.length}`);
+            assert.fail(
+                `Expected ${unreachableCode} unreachable, got ${
+                    results[0].unreachableCodes.length
+                }\n${formatDiagnosticMessages(results[0].unreachableCodes)}`
+            );
         }
     }
 
     if (deprecated !== undefined) {
         if (results[0].deprecateds.length !== deprecated) {
             logDiagnostics(results[0].deprecateds);
-            assert.fail(`Expected ${deprecated} deprecated, got ${results[0].deprecateds.length}`);
+            assert.fail(
+                `Expected ${deprecated} deprecated, got ${results[0].deprecateds.length}\n${formatDiagnosticMessages(
+                    results[0].deprecateds
+                )}`
+            );
         }
     }
 }
 
+function formatDiagnosticMessages(diags: Diagnostic[]) {
+    return diags
+        .map((diag) => `   [${diag.range.start.line + 1}:${diag.range.start.character + 1}] ${diag.message}`)
+        .join('\n');
+}
+
 function logDiagnostics(diags: Diagnostic[]) {
-    for (const diag of diags) {
-        console.error(`   [${diag.range.start.line + 1}:${diag.range.start.character + 1}] ${diag.message}`);
+    const formatted = formatDiagnosticMessages(diags);
+    if (formatted) {
+        console.error(formatted);
     }
 }

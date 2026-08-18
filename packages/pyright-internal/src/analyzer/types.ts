@@ -1554,9 +1554,14 @@ export namespace ClassType {
             return true;
         }
 
+        // When traversing the base class hierarchy, compare against the instantiable form of parentClassType.
+        const instantiableParent = TypeBase.isInstance(parentClassType)
+            ? ClassType.cloneAsInstantiable(parentClassType)
+            : parentClassType;
+
         for (const baseClass of subclassType.shared.baseClasses) {
             if (isInstantiableClass(baseClass)) {
-                if (isDerivedFrom(baseClass, parentClassType, inheritanceChain)) {
+                if (isDerivedFrom(baseClass, instantiableParent, inheritanceChain)) {
                     if (inheritanceChain) {
                         inheritanceChain.push(subclassType);
                     }
@@ -2839,6 +2844,8 @@ export interface TypeVarDetailsShared {
     name: string;
     constraints: Type[];
     boundType: Type | undefined;
+    constructorArity: number | undefined;
+    requiresTupleMapTranspose: boolean;
     isDefaultExplicit: boolean;
     defaultType: Type;
 
@@ -2896,6 +2903,9 @@ export interface TypeVarDetailsPriv {
 
     // Is this TypeVar or TypeVarTuple unpacked (i.e. Unpack or * operator applied)?
     isUnpacked?: boolean | undefined;
+
+    // Type arguments supplied when this TypeVar is used as a type constructor.
+    typeArgs?: Type[] | undefined;
 }
 
 export interface TypeVarType extends TypeBase<TypeCategory.TypeVar> {
@@ -2935,6 +2945,9 @@ export interface TypeVarTupleDetailsPriv extends TypeVarDetailsPriv {
     isInUnion?: boolean | undefined;
 
     freeTypeVar?: TypeVarTupleType | undefined;
+
+    // Unary constructor applied elementwise when this TypeVarTuple is solved.
+    mappedConstructor?: Type | undefined;
 }
 
 export interface TypeVarTupleType extends TypeVarType {
@@ -2997,6 +3010,18 @@ export namespace TypeVarType {
             );
         }
 
+        return newInstance;
+    }
+
+    export function cloneForTypeApplication(type: TypeVarType, typeArgs: Type[] | undefined): TypeVarType {
+        const newInstance = TypeBase.cloneType(type);
+        newInstance.priv.typeArgs = typeArgs;
+        return newInstance;
+    }
+
+    export function cloneForMappedTypeVarTuple(type: TypeVarTupleType, constructor: Type): TypeVarTupleType {
+        const newInstance = TypeBase.cloneType(type);
+        newInstance.priv.mappedConstructor = constructor;
         return newInstance;
     }
 
@@ -3174,6 +3199,8 @@ export namespace TypeVarType {
                 name,
                 constraints: [],
                 boundType: undefined,
+                constructorArity: undefined,
+                requiresTupleMapTranspose: false,
                 isDefaultExplicit: false,
                 defaultType: UnknownType.create(),
                 declaredVariance: Variance.Invariant,
@@ -3644,6 +3671,18 @@ export function isTypeSame(type1: Type, type2: Type, options: TypeSameOptions = 
 
             if (type1.priv.nameWithScope !== type2TypeVar.priv.nameWithScope) {
                 return false;
+            }
+
+            const typeArgs1 = type1.priv.typeArgs ?? [];
+            const typeArgs2 = type2TypeVar.priv.typeArgs ?? [];
+            if (typeArgs1.length !== typeArgs2.length) {
+                return false;
+            }
+
+            for (let i = 0; i < typeArgs1.length; i++) {
+                if (!isTypeSame(typeArgs1[i], typeArgs2[i], options, recursionCount)) {
+                    return false;
+                }
             }
 
             // Handle the case where this is a generic recursive type alias. Make

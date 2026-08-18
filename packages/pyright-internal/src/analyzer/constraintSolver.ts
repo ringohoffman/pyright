@@ -54,12 +54,14 @@ import {
     convertToInstance,
     convertToInstantiable,
     convertTypeToParamSpecValue,
+    getMappedConstructorTypeArg,
     getTypeCondition,
     getTypeVarArgsRecursive,
     getTypeVarScopeId,
     isEffectivelyInstantiable,
     isLiteralTypeOrUnion,
     isPartlyUnknown,
+    isTupleClass,
     makePacked,
     makeUnpacked,
     mapSubtypes,
@@ -114,6 +116,60 @@ export function assignTypeVar(
     if (isUnpacked(destType) && isUnpacked(srcType)) {
         destType = TypeVarType.cloneForPacked(destType);
         srcType = makePacked(srcType);
+    }
+
+    if (
+        isTypeVarTuple(destType) &&
+        destType.shared.requiresTupleMapTranspose &&
+        isClassInstance(srcType) &&
+        isTupleClass(srcType) &&
+        srcType.priv.tupleTypeArgs
+    ) {
+        let rowWidth: number | undefined;
+        for (const rowTypeArg of srcType.priv.tupleTypeArgs) {
+            if (
+                !isClassInstance(rowTypeArg.type) ||
+                !isTupleClass(rowTypeArg.type) ||
+                !rowTypeArg.type.priv.tupleTypeArgs ||
+                rowTypeArg.type.priv.tupleTypeArgs.some((typeArg) => typeArg.isUnbounded)
+            ) {
+                return false;
+            }
+
+            const currentWidth = rowTypeArg.type.priv.tupleTypeArgs.length;
+            if (rowWidth === undefined) {
+                rowWidth = currentWidth;
+            } else if (rowWidth !== currentWidth) {
+                return false;
+            }
+        }
+    }
+
+    if (
+        isTypeVarTuple(destType) &&
+        destType.priv.mappedConstructor &&
+        isClassInstance(srcType) &&
+        isTupleClass(srcType) &&
+        srcType.priv.tupleTypeArgs
+    ) {
+        const extractedTypeArgs: TupleTypeArg[] = [];
+        for (const srcTypeArg of srcType.priv.tupleTypeArgs) {
+            const extractedTypeArg = getMappedConstructorTypeArg(destType.priv.mappedConstructor, srcTypeArg.type);
+            if (!extractedTypeArg) {
+                return false;
+            }
+            extractedTypeArgs.push({
+                type: extractedTypeArg,
+                isUnbounded: srcTypeArg.isUnbounded,
+                isOptional: srcTypeArg.isOptional,
+            });
+        }
+        srcType = specializeTupleClass(
+            srcType,
+            extractedTypeArgs,
+            /* isTypeArgExplicit */ true,
+            srcType.priv.isUnpacked
+        );
     }
 
     // If the TypeVar doesn't have a scope ID, then it's being used
@@ -316,7 +372,9 @@ function solveTypeVarRecursive(
             }
 
             // Apply the dependent TypeVar values to the current TypeVar value.
-            if (!dependentSolution.isEmpty()) {
+            // If entry.typeVar is a constructor variable (constructorArity !== undefined),
+            // its solved value is a constructor template and should preserve its template parameters.
+            if (!dependentSolution.isEmpty() && entry.typeVar.shared.constructorArity === undefined) {
                 value = applySolvedTypeVars(value, dependentSolution);
             }
         }

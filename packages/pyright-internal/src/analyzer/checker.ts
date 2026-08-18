@@ -2389,8 +2389,10 @@ export class Checker extends ParseTreeWalker {
                     let isExempt =
                         TypeVarType.hasConstraints(nameType) ||
                         nameType.shared.isDefaultExplicit ||
+                        nameType.shared.constructorArity !== undefined ||
                         (exemptBoundTypeVar && subscriptIndex !== undefined) ||
-                        isParamSpec(nameType);
+                        isParamSpec(nameType) ||
+                        (nameNode.parent?.nodeType === ParseNodeType.Index && nameNode.parent.d.leftExpr === nameNode);
 
                     if (!isExempt && baseExpression && subscriptIndex !== undefined) {
                         // Is this a type argument for a generic type alias? If so,
@@ -7619,7 +7621,10 @@ export class Checker extends ParseTreeWalker {
             return;
         }
 
-        if (!this._evaluator.assignType(paramType, expectedType)) {
+        if (
+            !this._evaluator.assignType(paramType, expectedType) &&
+            !this._evaluator.assignType(concreteParamType, expectedType)
+        ) {
             // We exempt Never from this check because it has a legitimate use in this case.
             if (!isNever(paramType)) {
                 this._evaluator.addDiagnostic(

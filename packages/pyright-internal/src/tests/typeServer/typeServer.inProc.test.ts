@@ -198,6 +198,40 @@ describe('TypeServer in-proc protocol', () => {
         });
     });
 
+    test('getDeclaredType preserves applied TypeVar arguments', async () => {
+        const code = `
+// @filename: main.py
+//// from __future__ import annotations
+//// from typing import Generic, TypeVar
+////
+//// T = TypeVar("T")
+//// class Box(Generic[T]):
+////     pass
+////
+//// F = TypeVar("F", bound=Box[T])
+////
+//// def func(value: [|/*type*/F[int]|]) -> None:
+////     pass
+`;
+
+        await withInProcTypeServer(code, async (context) => {
+            await context.openFileForMarker('type');
+            const arg: TypeServerProtocol.Node = context.getNodeForMarker('type');
+
+            await context.refreshSnapshot();
+            const type = await context.sendRequestWithSnapshot(TypeServerProtocol.GetDeclaredTypeRequest.type, {
+                arg,
+            });
+
+            assert(type !== undefined);
+            assert.strictEqual(type.kind, TypeServerProtocol.TypeKind.TypeVar);
+
+            const typeVar = type as TypeServerProtocol.TypeVarType;
+            assert.strictEqual(typeVar.typeArgs?.length, 1);
+            assert.strictEqual(getClassTypeName(typeVar.typeArgs?.[0]), 'int');
+        });
+    });
+
     test('getExpectedType returns a type for a node', async () => {
         const code = `
 // @filename: main.py

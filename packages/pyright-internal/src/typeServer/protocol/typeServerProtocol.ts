@@ -76,7 +76,8 @@ export namespace TypeServerProtocol {
         v0_2_0 = '0.2.0', // Added new request types and fields
         v0_3_0 = '0.3.0', // Switch to more complex types
         v0_4_0 = '0.4.0', // Switch to Type union and using stubs
-        current = '0.4.1', // Add multi-connection negotiation and control requests
+        v0_4_1 = '0.4.1', // Add multi-connection negotiation and control requests
+        current = '0.4.2', // Preserve type arguments on applied TypeVars
     }
 
     /**
@@ -1009,7 +1010,11 @@ export namespace TypeServerProtocol {
      *     ...
      * ```
      */
-    export type TypeVarType = DeclaredType<TypeKind.TypeVar>;
+    export interface TypeVarType extends DeclaredType<TypeKind.TypeVar> {
+        // Type arguments supplied when this TypeVar is used as a type constructor.
+        // Example: For F[int], typeArgs = [int].
+        readonly typeArgs?: Type[];
+    }
 
     /**
      * Represents an overloaded function with multiple signatures.

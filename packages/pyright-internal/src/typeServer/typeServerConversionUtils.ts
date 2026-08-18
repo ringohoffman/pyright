@@ -6,8 +6,8 @@
  *
  * Conversion utilities for converting between concrete and abstract representations of nodes and declarations.
  */
-import { TypeServerProtocol } from './protocol/typeServerProtocol';
 import { CancellationToken } from 'vscode-languageserver-protocol';
+import { TypeServerProtocol } from './protocol/typeServerProtocol';
 
 import { Declaration, DeclarationType } from '../analyzer/declaration';
 import { getChildNodes, ParseTreeWalker } from '../analyzer/parseTreeWalker';
@@ -19,9 +19,9 @@ import { Uri } from '../common/uri/uri';
 import { convertUriToLspUriString } from '../common/uri/uriUtils';
 import * as PyrightNodes from '../parser/parseNodes';
 
-import { ITypeServerEvaluator } from './typeServerEvaluator';
-import { isDeclaration, map } from './typeEvalUtils';
 import { IProgram } from './programTypes';
+import { isDeclaration, map } from './typeEvalUtils';
+import { ITypeServerEvaluator } from './typeServerEvaluator';
 
 import {
     generateStubFromClassType,
@@ -269,6 +269,7 @@ function toProtocolType(id: number, type: PyrightTypes.Type, factory: ProtocolTy
                     kind: TypeServerProtocol.TypeKind.TypeVar,
                     flags: toProtocolTypeFlags(type),
                     declaration: toProtocolDecl(declaration, factory.view),
+                    typeArgs: type.priv.typeArgs ? toProtocolTypes(type.priv.typeArgs, factory) : undefined,
                 } satisfies TypeServerProtocol.TypeVarType;
             }
 

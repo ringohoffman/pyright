@@ -637,6 +637,20 @@ function printTypeInternal(
                     typeVarName = `Union[${typeVarName}]`;
                 }
 
+                if (type.priv.typeArgs) {
+                    const typeArgStrings = type.priv.typeArgs.map((typeArg) =>
+                        printTypeInternal(
+                            typeArg,
+                            printTypeFlags,
+                            returnTypeCallback,
+                            uniqueNameMap,
+                            recursionTypes,
+                            recursionCount
+                        )
+                    );
+                    typeVarName = `${typeVarName}[${typeArgStrings.join(', ')}]`;
+                }
+
                 if (TypeBase.isInstantiable(type)) {
                     typeVarName = `${_printNestedInstantiable(type, typeVarName)}`;
                 }

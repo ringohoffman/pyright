@@ -44,6 +44,7 @@ import {
     isFunction,
     isInstantiableClass,
     isOverloaded,
+    isTypeVar,
 } from './types';
 
 export interface FunctionDecoratorInfo {
@@ -260,6 +261,21 @@ export function applyFunctionDecorator(
                         return newFunction;
                     }
 
+                    if (isOverloaded(inputFunctionType)) {
+                        return OverloadedType.create(
+                            OverloadedType.getOverloads(inputFunctionType).map((overload) => {
+                                const newFunction = FunctionType.clone(overload);
+                                newFunction.shared.flags &= ~(
+                                    FunctionTypeFlags.ConstructorMethod |
+                                    FunctionTypeFlags.StaticMethod |
+                                    FunctionTypeFlags.ClassMethod
+                                );
+                                newFunction.shared.flags |= requiredFlag;
+                                return newFunction;
+                            })
+                        );
+                    }
+
                     return inputFunctionType;
                 }
 
@@ -449,7 +465,11 @@ function getTypeOfDecorator(evaluator: TypeEvaluator, node: DecoratorNode, funct
     if (
         isInstantiableClass(decoratorTypeResult.type) &&
         ClassType.isBuiltIn(decoratorTypeResult.type, 'classmethod') &&
-        isProperty(functionOrClassType)
+        (isProperty(functionOrClassType) ||
+            (isFunction(functionOrClassType) &&
+                functionOrClassType.shared.parameters.length > 0 &&
+                isTypeVar(FunctionType.getParamType(functionOrClassType, 0)) &&
+                (FunctionType.getParamType(functionOrClassType, 0) as any).priv.typeArgs !== undefined))
     ) {
         return functionOrClassType;
     }

@@ -7,10 +7,27 @@
         "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.formatOnSave": true
     },
+    "[python]": {
+        "editor.semanticHighlighting.enabled": true
+    },
     "editor.codeActionsOnSave": {
         "source.fixAll.eslint": "explicit",
         "source.organizeImports": "explicit"
     },
     "typescript.tsdk": "node_modules/typescript/lib",
-    "python.languageServer": "None",
+    "python.languageServer": "Default",
+    "python.analysis.enableExternalTypeServer": true,
+    "python.analysis.typeServerExecutable": "/opt/homebrew/bin/node",
+    "python.analysis.typeServerArguments": [
+        "/Users/ringo/Repositories/pyright/packages/pyright-typeserver/pyright-typeserver.js",
+        "--stdio"
+    ],
+    "python.analysis.logTypeServerMessages": true,
+    "python.analysis.useNearestConfiguration": true,
+    "python.defaultInterpreterPath": "/Users/ringo/Repositories/pyright/.venv/bin/python",
+    "python.terminal.activateEnvironment": false,
+    "jest.rootPath": "packages/pyright-internal",
+    "jest.jestCommandLine": "node_modules/jest/bin/jest.js --config jest.config.js --runInBand --forceExit",
+    "jest.runMode": "on-demand",
+    "jest.showCoverageOnLoad": false
 }

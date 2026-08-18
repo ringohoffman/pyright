@@ -1609,6 +1609,8 @@ export namespace Localizer {
             );
         export const typeNotClass = () =>
             new ParameterizedString<{ type: string }>(getRawString('DiagnosticAddendum.typeNotClass'));
+        export const typeNotGenericConstructor = () =>
+            new ParameterizedString<{ type: string }>(getRawString('DiagnosticAddendum.typeNotGenericConstructor'));
         export const typeParamSpec = () =>
             new ParameterizedString<{ type: string; name: string }>(getRawString('DiagnosticAddendum.typeParamSpec'));
         export const typeNotStringLiteral = () =>

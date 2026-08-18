@@ -2677,6 +2677,17 @@ export function isPartlyUnknown(type: Type, recursionCount = 0): boolean {
         return findSubtype(type, (subtype) => isPartlyUnknown(subtype, recursionCount)) !== undefined;
     }
 
+    // See if a TypeVar has type arguments that are partially unknown.
+    if (isTypeVar(type)) {
+        if (type.priv.typeArgs) {
+            for (const argType of type.priv.typeArgs) {
+                if (isPartlyUnknown(argType, recursionCount)) {
+                    return true;
+                }
+            }
+        }
+    }
+
     // See if an object or class has an unknown type argument.
     if (isClass(type)) {
         // If this is a reference to the class itself, as opposed to a reference
@@ -2858,6 +2869,69 @@ export function specializeTupleClass(
     }
 
     return clonedClassType;
+}
+
+export function specializeMappedConstructor(constructor: Type, typeArg: Type): Type | undefined {
+    if (isInstantiableClass(constructor) && constructor.shared.typeParams.length === 1) {
+        return ClassType.cloneAsInstance(ClassType.specialize(constructor, [typeArg]));
+    }
+
+    const aliasInfo = constructor.props?.typeAliasInfo;
+    if (aliasInfo?.shared.typeParams?.length === 1) {
+        const solution = new ConstraintSolution();
+        solution.setType(aliasInfo.shared.typeParams[0], typeArg);
+        const specializedType = applySolvedTypeVars(constructor, solution);
+        return TypeBase.cloneForTypeAlias(specializedType, { ...aliasInfo, typeArgs: [typeArg] });
+    }
+
+    return undefined;
+}
+
+export function getMappedConstructorTypeArg(constructor: Type, specializedType: Type): Type | undefined {
+    if (
+        isInstantiableClass(constructor) &&
+        isClassInstance(specializedType) &&
+        ClassType.isSameGenericClass(constructor, specializedType) &&
+        specializedType.priv.typeArgs?.length === 1
+    ) {
+        return specializedType.priv.typeArgs[0];
+    }
+
+    if (isInstantiableClass(constructor) && isClassInstance(specializedType)) {
+        const matchingBase = specializedType.shared.mro.find(
+            (mroClass): mroClass is ClassType =>
+                isInstantiableClass(mroClass) && ClassType.isSameGenericClass(mroClass, constructor)
+        );
+        if (matchingBase) {
+            const specializedBase = specializeForBaseClass(
+                ClassType.cloneAsInstantiable(specializedType),
+                matchingBase
+            );
+            if (specializedBase.priv.typeArgs?.length === 1) {
+                return specializedBase.priv.typeArgs[0];
+            }
+        }
+    }
+
+    const constructorAlias = constructor.props?.typeAliasInfo;
+    const specializedAlias = specializedType.props?.typeAliasInfo;
+    if (
+        constructorAlias &&
+        specializedAlias &&
+        constructorAlias.shared === specializedAlias.shared &&
+        specializedAlias.typeArgs?.length === 1
+    ) {
+        return specializedAlias.typeArgs[0];
+    }
+
+    return undefined;
+}
+
+function stripMappedPackLiteral(type: Type): Type {
+    if (isClassInstance(type) && type.priv.literalValue !== undefined) {
+        return ClassType.cloneWithLiteral(type, /* value */ undefined);
+    }
+    return type;
 }
 
 function _expandUnpackedTypeVarTupleUnion(type: Type) {
@@ -4203,36 +4277,165 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
             return UnknownType.create();
         }
 
-        if (!this._shouldReplaceTypeVar(typeVar)) {
+        const replacement = solutionSet.getType(typeVar);
+        if (!replacement && !this._shouldReplaceTypeVar(typeVar)) {
             return undefined;
         }
 
-        let replacement = solutionSet.getType(typeVar);
+        let resolvedReplacement = replacement;
 
-        if (replacement) {
+        if (resolvedReplacement) {
             // No more processing is needed for ParamSpecs.
             if (isParamSpec(typeVar)) {
                 return replacement;
             }
 
+            if (
+                isTypeVarTuple(typeVar) &&
+                typeVar.priv.mappedConstructor &&
+                isClassInstance(resolvedReplacement) &&
+                isTupleClass(resolvedReplacement) &&
+                resolvedReplacement.priv.tupleTypeArgs
+            ) {
+                let mappedTypeArgs: TupleTypeArg[];
+                if (
+                    typeVar.shared.requiresTupleMapTranspose &&
+                    isInstantiableClass(typeVar.priv.mappedConstructor) &&
+                    isTupleClass(typeVar.priv.mappedConstructor)
+                ) {
+                    const rows = resolvedReplacement.priv.tupleTypeArgs;
+                    const rowWidth =
+                        rows.length > 0 && isClassInstance(rows[0].type) && rows[0].type.priv.tupleTypeArgs
+                            ? rows[0].type.priv.tupleTypeArgs.length
+                            : 0;
+                    mappedTypeArgs = [];
+                    for (let column = 0; column < rowWidth; column++) {
+                        const columnTypeArgs: TupleTypeArg[] = rows.map((row) => {
+                            const rowTypeArgs = isClassInstance(row.type) ? row.type.priv.tupleTypeArgs : undefined;
+                            return {
+                                type: rowTypeArgs
+                                    ? stripMappedPackLiteral(rowTypeArgs[column].type)
+                                    : UnknownType.create(),
+                                isUnbounded: false,
+                            };
+                        });
+                        mappedTypeArgs.push({
+                            type: ClassType.cloneAsInstance(
+                                specializeTupleClass(typeVar.priv.mappedConstructor, columnTypeArgs)
+                            ),
+                            isUnbounded: false,
+                        });
+                    }
+                } else {
+                    mappedTypeArgs = resolvedReplacement.priv.tupleTypeArgs.map((typeArg) => ({
+                        type:
+                            specializeMappedConstructor(typeVar.priv.mappedConstructor!, typeArg.type) ??
+                            UnknownType.create(),
+                        isUnbounded: typeArg.isUnbounded,
+                        isOptional: typeArg.isOptional,
+                    }));
+                }
+                return specializeTupleClass(
+                    resolvedReplacement,
+                    mappedTypeArgs,
+                    /* isTypeArgExplicit */ true,
+                    typeVar.priv.isUnpacked
+                );
+            }
+
+            // Preserve the selected higher-kinded constructor family when the solved
+            // replacement specializes a generic constructor or template.
+            if (typeVar.priv.typeArgs && isClass(resolvedReplacement)) {
+                const appliedTypeArgs = typeVar.priv.typeArgs.map((typeArg) => this.apply(typeArg, recursionCount));
+                const aliasInfo = resolvedReplacement.props?.typeAliasInfo;
+                if (aliasInfo?.shared.typeParams && aliasInfo.shared.typeParams.length === appliedTypeArgs.length) {
+                    const aliasSolution = new ConstraintSolution();
+                    if (aliasInfo.typeArgs && aliasInfo.typeArgs.length === aliasInfo.shared.typeParams.length) {
+                        for (let i = 0; i < aliasInfo.typeArgs.length; i++) {
+                            const currentArg = aliasInfo.typeArgs[i];
+                            if (isTypeVar(currentArg)) {
+                                aliasSolution.setType(currentArg, appliedTypeArgs[i]);
+                            }
+                        }
+                    }
+                    for (let i = 0; i < aliasInfo.shared.typeParams.length; i++) {
+                        aliasSolution.setType(aliasInfo.shared.typeParams[i], appliedTypeArgs[i]);
+                    }
+                    const specializedUnderlying = applySolvedTypeVars(resolvedReplacement, aliasSolution);
+                    resolvedReplacement = TypeBase.cloneForTypeAlias(specializedUnderlying, {
+                        ...aliasInfo,
+                        typeArgs: appliedTypeArgs,
+                    });
+                } else if (!resolvedReplacement.priv.typeArgs) {
+                    if (resolvedReplacement.shared.typeParams.length === appliedTypeArgs.length) {
+                        resolvedReplacement = ClassType.specialize(
+                            resolvedReplacement,
+                            appliedTypeArgs,
+                            /* isTypeArgExplicit */ undefined,
+                            /* includeSubclasses */ true
+                        );
+                    } else {
+                        // If typeVar has a template bound/constraint (e.g. DictT: _dict2[_T, Any]),
+                        // specialize the template using the applied type arguments.
+                        const template =
+                            typeVar.shared.boundType && isClassInstance(typeVar.shared.boundType)
+                                ? typeVar.shared.boundType
+                                : typeVar.shared.constraints.find(
+                                      (c): c is ClassType => isClassInstance(c) && !!c.priv.typeArgs
+                                  );
+                        if (template?.priv.typeArgs) {
+                            const templateTypeVars = getTypeVarArgsRecursive(template);
+                            if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
+                                const templateSolution = new ConstraintSolution();
+                                for (let i = 0; i < templateTypeVars.length; i++) {
+                                    templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
+                                }
+                                const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
+                                    applySolvedTypeVars(arg, templateSolution)
+                                );
+                                resolvedReplacement = ClassType.specialize(
+                                    resolvedReplacement,
+                                    specializedTemplateArgs,
+                                    /* isTypeArgExplicit */ undefined,
+                                    /* includeSubclasses */ true
+                                );
+                            } else {
+                                resolvedReplacement = UnknownType.create();
+                            }
+                        } else {
+                            resolvedReplacement = UnknownType.create();
+                        }
+                    }
+                } else {
+                    const templateTypeVars = getTypeVarArgsRecursive(resolvedReplacement);
+                    if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
+                        const templateSolution = new ConstraintSolution();
+                        for (let i = 0; i < templateTypeVars.length; i++) {
+                            templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
+                        }
+                        resolvedReplacement = applySolvedTypeVars(resolvedReplacement, templateSolution);
+                    }
+                }
+            }
+
             if (TypeBase.isInstantiable(typeVar)) {
                 if (
-                    isAnyOrUnknown(replacement) &&
+                    isAnyOrUnknown(resolvedReplacement) &&
                     this._options.typeClassType &&
                     isInstantiableClass(this._options.typeClassType)
                 ) {
-                    replacement = ClassType.specialize(ClassType.cloneAsInstance(this._options.typeClassType), [
-                        replacement,
+                    resolvedReplacement = ClassType.specialize(ClassType.cloneAsInstance(this._options.typeClassType), [
+                        resolvedReplacement,
                     ]);
                 } else {
-                    replacement = convertToInstantiable(replacement, /* includeSubclasses */ false);
+                    resolvedReplacement = convertToInstantiable(resolvedReplacement, /* includeSubclasses */ false);
                 }
             } else {
                 // If the TypeVar is not instantiable (i.e. not a type[T]), then
                 // it represents an instance of a type. If the replacement includes
                 // a generic class that has not been specialized, specialize it
                 // now with default type arguments.
-                replacement = mapSubtypes(replacement, (subtype) => {
+                resolvedReplacement = mapSubtypes(resolvedReplacement, (subtype) => {
                     if (isClassInstance(subtype)) {
                         // If the includeSubclasses wasn't set, force it to be set by
                         // converting to/from an instantiable.
@@ -4256,36 +4459,40 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                 });
             }
 
-            if (isTypeVarTuple(replacement) && isTypeVarTuple(typeVar) && typeVar.priv.isUnpacked) {
-                return TypeVarType.cloneForUnpacked(replacement, typeVar.priv.isInUnion);
+            if (isTypeVarTuple(resolvedReplacement) && isTypeVarTuple(typeVar) && typeVar.priv.isUnpacked) {
+                return TypeVarType.cloneForUnpacked(resolvedReplacement, typeVar.priv.isInUnion);
             }
 
             if (
-                !isTypeVarTuple(replacement) &&
-                isTypeVar(replacement) &&
+                !isTypeVarTuple(resolvedReplacement) &&
+                isTypeVar(resolvedReplacement) &&
                 isTypeVar(typeVar) &&
                 typeVar.priv.isUnpacked
             ) {
-                return TypeVarType.cloneForUnpacked(replacement);
+                return TypeVarType.cloneForUnpacked(resolvedReplacement);
             }
 
             // If this isn't a TypeVarTuple, combine all of the tuple
             // type args into a common type.
             if (
                 !isTypeVarTuple(typeVar) &&
-                isClassInstance(replacement) &&
-                replacement.priv.tupleTypeArgs &&
-                replacement.priv.isUnpacked
+                isClassInstance(resolvedReplacement) &&
+                resolvedReplacement.priv.tupleTypeArgs &&
+                resolvedReplacement.priv.isUnpacked
             ) {
-                replacement = combineTupleTypeArgs(replacement.priv.tupleTypeArgs);
+                resolvedReplacement = combineTupleTypeArgs(resolvedReplacement.priv.tupleTypeArgs);
             }
 
-            if (isUnpackedTypeVar(typeVar) && isClass(replacement)) {
-                replacement = ClassType.cloneForUnpacked(replacement);
+            if (isUnpackedTypeVar(typeVar) && isClass(resolvedReplacement)) {
+                resolvedReplacement = ClassType.cloneForUnpacked(resolvedReplacement);
             }
 
-            if (!isTypeVar(replacement) || !TypeVarType.isUnification(replacement) || !this._options.replaceUnsolved) {
-                return replacement;
+            if (
+                !isTypeVar(resolvedReplacement) ||
+                !TypeVarType.isUnification(resolvedReplacement) ||
+                !this._options.replaceUnsolved
+            ) {
+                return resolvedReplacement;
             }
         }
 

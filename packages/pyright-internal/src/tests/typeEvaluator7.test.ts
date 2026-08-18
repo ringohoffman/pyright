@@ -302,6 +302,238 @@ test('GenericType47', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('HigherKindedType1', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType1.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HigherKindedType2', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType2.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedType3', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType3.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType4', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType4.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType5', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType5.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedType6', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType6.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType7', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType7.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HigherKindedType8', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType8.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedType8Pep695', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType8Pep695.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HigherKindedType9', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType9.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HigherKindedType9Pep695', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType9Pep695.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HigherKindedType10', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType10.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType10Pep695', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType10Pep695.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType11', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType11.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HigherKindedType11Pep695', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType11Pep695.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HigherKindedType12', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType12.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HigherKindedType13', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType13.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 8);
+});
+
+test('HigherKindedType14', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType14.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType15', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType15.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedType16', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType16.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType17', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_13;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType17.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType18', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType18.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('HigherKindedType19', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType19.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedType20', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType20.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedType21', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType21.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedMap1', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap1.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedMap2', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap2.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HigherKindedMap3', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap3.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedMap4', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap4.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 

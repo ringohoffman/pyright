@@ -2098,6 +2098,7 @@
         "typeConstrainedTypeVar": "Type \"{type}\" is not assignable to constrained type variable \"{name}\"",
         "typeIncompatible": "\"{sourceType}\" is not assignable to \"{destType}\"",
         "typeNotClass": "\"{type}\" is not a class",
+        "typeNotGenericConstructor": "\"{type}\" is not a generic type constructor",
         "typeNotStringLiteral": "\"{type}\" is not a string literal",
         "typeOfSymbol": "Type of \"{name}\" is \"{type}\"",
         "typeParamSpec": {

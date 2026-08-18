@@ -771,6 +771,10 @@ class TypeStubTreeWalker extends ParseTreeWalker {
 
         line += node.d.name.d.value;
 
+        if (node.d.typeParams) {
+            line += this._printTypeParams(node.d.typeParams);
+        }
+
         if (node.d.boundExpr) {
             line += ': ';
             line += this._printExpression(node.d.boundExpr);

@@ -4361,7 +4361,8 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                     for (let i = 0; i < aliasInfo.shared.typeParams.length; i++) {
                         aliasSolution.setType(aliasInfo.shared.typeParams[i], appliedTypeArgs[i]);
                     }
-                    const specializedUnderlying = applySolvedTypeVars(resolvedReplacement, aliasSolution);
+                    const targetToSpecialize = aliasInfo.shared.unspecializedType ?? resolvedReplacement;
+                    const specializedUnderlying = applySolvedTypeVars(targetToSpecialize, aliasSolution, this._options);
                     resolvedReplacement = TypeBase.cloneForTypeAlias(specializedUnderlying, {
                         ...aliasInfo,
                         typeArgs: appliedTypeArgs,
@@ -4393,12 +4394,16 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                                 const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
                                     applySolvedTypeVars(arg, templateSolution)
                                 );
-                                resolvedReplacement = ClassType.specialize(
-                                    resolvedReplacement,
-                                    specializedTemplateArgs,
-                                    /* isTypeArgExplicit */ undefined,
-                                    /* includeSubclasses */ true
-                                );
+                                if (resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length) {
+                                    resolvedReplacement = ClassType.specialize(
+                                        resolvedReplacement,
+                                        specializedTemplateArgs,
+                                        /* isTypeArgExplicit */ undefined,
+                                        /* includeSubclasses */ true
+                                    );
+                                } else {
+                                    resolvedReplacement = UnknownType.create();
+                                }
                             } else {
                                 resolvedReplacement = UnknownType.create();
                             }
@@ -4431,6 +4436,10 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                     resolvedReplacement = convertToInstantiable(resolvedReplacement, /* includeSubclasses */ false);
                 }
             } else {
+                if (typeVar.priv.typeArgs && TypeBase.isInstantiable(resolvedReplacement)) {
+                    resolvedReplacement = convertToInstance(resolvedReplacement);
+                }
+
                 // If the TypeVar is not instantiable (i.e. not a type[T]), then
                 // it represents an instance of a type. If the replacement includes
                 // a generic class that has not been specialized, specialize it

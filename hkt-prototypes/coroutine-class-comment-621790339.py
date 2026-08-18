@@ -47,7 +47,7 @@ class WrapperTemplate[T](Protocol):
 
 # 2. Declare `WrapperT` with a constructor template constraint `WrapperT: WrapperTemplate[X]`
 # (or union of origins: `WrapperT: (Result[X], ConstNone[X])`)
-class GenericFacade[X: (bool, bytes, str, int, float, None), WrapperT: WrapperTemplate[X]]:
+class GenericFacade[WrapperT[X: (bool, bytes, str, int, float, None)]: WrapperTemplate[X]]:
     def method_1(self, *args: Any) -> WrapperT[str]:
         ...
 
@@ -61,14 +61,14 @@ class GenericFacade[X: (bool, bytes, str, int, float, None), WrapperT: WrapperTe
         ...
 
 
-class CoroutineFacade[X: (bool, bytes, str, int, float, None)](GenericFacade[X, Coroutine[Any, Any, X]]):
+class CoroutineFacade(GenericFacade[Result]):
     ...
 
 
 type ConstNone[T] = None
 
 
-class NoneFacade[X: (bool, bytes, str, int, float, None)](GenericFacade[X, ConstNone[X]]):
+class NoneFacade(GenericFacade[ConstNone]):
     ...
 
 

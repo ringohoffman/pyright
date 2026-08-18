@@ -27,7 +27,10 @@
     "python.defaultInterpreterPath": "/Users/ringo/Repositories/pyright/.venv/bin/python",
     "python.terminal.activateEnvironment": false,
     "jest.rootPath": "packages/pyright-internal",
-    "jest.jestCommandLine": "node_modules/jest/bin/jest.js --config jest.config.js --runInBand --forceExit",
+    "jest.jestCommandLine": "node --max-old-space-size=8192 ./node_modules/jest/bin/jest.js --config jest.config.js --forceExit",
+    "jest.nodeEnv": {
+        "PYLANCE_JEST_TRANSPILE_ONLY": "1"
+    },
     "jest.runMode": "on-demand",
     "jest.showCoverageOnLoad": false
 }

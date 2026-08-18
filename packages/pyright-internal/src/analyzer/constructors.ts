@@ -886,7 +886,7 @@ function createFunctionFromNewMethod(
         }
 
         convertedNew.shared.flags &= ~(FunctionTypeFlags.StaticMethod | FunctionTypeFlags.ConstructorMethod);
-        convertedNew.priv.constructorTypeVarScopeId = getTypeVarScopeId(newInfo?.classType ?? classType);
+        convertedNew.priv.constructorTypeVarScopeId = getTypeVarScopeId(classType);
 
         return convertedNew;
     };

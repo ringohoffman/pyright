@@ -1052,6 +1052,7 @@ export interface TypeParameterNode extends ParseNodeBase<ParseNodeType.TypeParam
     d: {
         name: NameNode;
         typeParamKind: TypeParamKind;
+        typeParams?: TypeParameterListNode;
         boundExpr?: ExpressionNode;
         defaultExpr?: ExpressionNode;
     };
@@ -1061,6 +1062,7 @@ export namespace TypeParameterNode {
     export function create(
         name: NameNode,
         typeParamKind: TypeParamKind,
+        typeParams?: TypeParameterListNode,
         boundExpr?: ExpressionNode,
         defaultExpr?: ExpressionNode
     ) {
@@ -1074,12 +1076,18 @@ export namespace TypeParameterNode {
             d: {
                 name,
                 typeParamKind,
+                typeParams,
                 boundExpr,
                 defaultExpr,
             },
         };
 
         name.parent = node;
+
+        if (typeParams) {
+            typeParams.parent = node;
+            extendRange(node, typeParams);
+        }
 
         if (boundExpr) {
             boundExpr.parent = node;
@@ -2860,4 +2868,4 @@ export type EvaluationScopeNode =
     | ComprehensionNode
     | TypeParameterListNode;
 export type ExecutionScopeNode = LambdaNode | FunctionNode | ModuleNode | TypeParameterListNode;
-export type TypeParameterScopeNode = FunctionNode | ClassNode | TypeAliasNode;
+export type TypeParameterScopeNode = FunctionNode | ClassNode | TypeAliasNode | TypeParameterNode;

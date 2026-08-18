@@ -954,8 +954,25 @@ export class Binder extends ParseTreeWalker {
         const typeParamScope = new Scope(ScopeType.TypeParameter, this._getNonClassParentScope(), this._currentScope);
 
         node.d.params.forEach((param) => {
+            if (param.d.typeParams) {
+                const prevScope = this._currentScope;
+                this._currentScope = typeParamScope;
+                this.visitTypeParameterList(param.d.typeParams);
+                this._currentScope = prevScope;
+            }
+        });
+
+        node.d.params.forEach((param) => {
             if (param.d.boundExpr) {
-                this.walk(param.d.boundExpr);
+                const innerScope = param.d.typeParams ? AnalyzerNodeInfo.getScope(param.d.typeParams) : undefined;
+                if (innerScope) {
+                    const prevScope = this._currentScope;
+                    this._currentScope = innerScope;
+                    this.walk(param.d.boundExpr);
+                    this._currentScope = prevScope;
+                } else {
+                    this.walk(param.d.boundExpr);
+                }
             }
         });
 
@@ -988,7 +1005,15 @@ export class Binder extends ParseTreeWalker {
 
         node.d.params.forEach((param) => {
             if (param.d.defaultExpr) {
-                this.walk(param.d.defaultExpr);
+                const innerScope = param.d.typeParams ? AnalyzerNodeInfo.getScope(param.d.typeParams) : undefined;
+                if (innerScope) {
+                    const prevScope = this._currentScope;
+                    this._currentScope = innerScope;
+                    this.walk(param.d.defaultExpr);
+                    this._currentScope = prevScope;
+                } else {
+                    this.walk(param.d.defaultExpr);
+                }
             }
         });
 

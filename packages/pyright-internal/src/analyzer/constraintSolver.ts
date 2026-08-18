@@ -179,6 +179,27 @@ export function assignTypeVar(
         return true;
     }
 
+    if (destType.shared.constructorArity !== undefined && !destType.priv.typeArgs) {
+        let isConstructor = false;
+        if (isClass(srcType)) {
+            const aliasInfo = srcType.props?.typeAliasInfo;
+            const arity = aliasInfo?.shared.typeParams
+                ? aliasInfo.shared.typeParams.length
+                : srcType.shared.typeParams.length;
+            if (arity === destType.shared.constructorArity) {
+                isConstructor = true;
+            }
+        }
+        if (!isConstructor && !isAnyOrUnknown(srcType)) {
+            diag?.addMessage(
+                LocAddendum.typeNotGenericConstructor().format({
+                    type: evaluator.printType(srcType),
+                })
+            );
+            return false;
+        }
+    }
+
     if (TypeVarType.isBound(destType) && !TypeVarType.isUnification(destType)) {
         return assignBoundTypeVar(evaluator, destType, srcType, diag, flags);
     }
@@ -705,7 +726,7 @@ function assignUnconstrainedTypeVar(
 
     // If the source is a class that is missing type arguments, fill
     // in missing type arguments with Unknown.
-    if ((flags & AssignTypeFlags.AllowUnspecifiedTypeArgs) === 0) {
+    if ((flags & AssignTypeFlags.AllowUnspecifiedTypeArgs) === 0 && destType.shared.constructorArity === undefined) {
         if (isClass(adjSrcType) && adjSrcType.priv.includeSubclasses) {
             adjSrcType = specializeWithDefaultTypeArgs(adjSrcType);
         }

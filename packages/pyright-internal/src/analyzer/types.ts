@@ -148,6 +148,9 @@ export interface TypeAliasSharedInfo {
     // Lazily-evaluated variance of type parameters based on how
     // they are used in the type alias
     computedVariance: Variance[] | undefined;
+
+    // Unspecialized underlying type of the type alias
+    unspecializedType?: Type | undefined;
 }
 
 export interface TypeAliasInfo {
@@ -1554,14 +1557,13 @@ export namespace ClassType {
             return true;
         }
 
-        // When traversing the base class hierarchy, compare against the instantiable form of parentClassType.
-        const instantiableParent = TypeBase.isInstance(parentClassType)
-            ? ClassType.cloneAsInstantiable(parentClassType)
-            : parentClassType;
+        const targetParent = TypeBase.isInstantiable(parentClassType)
+            ? parentClassType
+            : ClassType.cloneAsInstantiable(parentClassType);
 
         for (const baseClass of subclassType.shared.baseClasses) {
             if (isInstantiableClass(baseClass)) {
-                if (isDerivedFrom(baseClass, instantiableParent, inheritanceChain)) {
+                if (isDerivedFrom(baseClass, targetParent, inheritanceChain)) {
                     if (inheritanceChain) {
                         inheritanceChain.push(subclassType);
                     }

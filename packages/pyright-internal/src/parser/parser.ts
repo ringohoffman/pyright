@@ -637,6 +637,11 @@ export class Parser {
 
         const name = NameNode.create(nameToken);
 
+        let typeParams: TypeParameterListNode | undefined;
+        if (this._peekTokenType() === TokenType.OpenBracket) {
+            typeParams = this._parseTypeParameterList();
+        }
+
         let boundExpression: ExpressionNode | undefined;
         if (this._consumeTokenIfType(TokenType.Colon)) {
             boundExpression = this._parseExpression(/* allowUnpack */ false);
@@ -660,7 +665,7 @@ export class Parser {
             }
         }
 
-        return TypeParameterNode.create(name, typeParamCategory, boundExpression, defaultExpression);
+        return TypeParameterNode.create(name, typeParamCategory, typeParams, boundExpression, defaultExpression);
     }
 
     // match_stmt: "match" subject_expr ':' NEWLINE INDENT case_block+ DEDENT

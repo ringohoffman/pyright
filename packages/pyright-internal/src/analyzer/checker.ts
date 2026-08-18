@@ -2389,7 +2389,6 @@ export class Checker extends ParseTreeWalker {
                     let isExempt =
                         TypeVarType.hasConstraints(nameType) ||
                         nameType.shared.isDefaultExplicit ||
-                        nameType.shared.constructorArity !== undefined ||
                         (exemptBoundTypeVar && subscriptIndex !== undefined) ||
                         isParamSpec(nameType) ||
                         (nameNode.parent?.nodeType === ParseNodeType.Index && nameNode.parent.d.leftExpr === nameNode);
@@ -2499,8 +2498,20 @@ export class Checker extends ParseTreeWalker {
         }
 
         localTypeVarUsage.forEach((usage) => {
-            // Report error for local type variable that appears only once.
-            if (usage.nodes.length === 1 && !usage.isExempt) {
+            // If the TypeVar is an HKT constructor (constructorArity !== undefined),
+            // it is exempt from the single-use check when it appears in input parameters
+            // (e.g. `def accepts(x: F[int]) -> None`), but NOT if it appears only in
+            // return position (`paramTypeUsageCount === 0`) because a return-only
+            // constructor TypeVar is unsolvable by the caller.
+            const isConstructorTypeVar = usage.typeVar.shared.constructorArity !== undefined;
+            const isExempt =
+                usage.isExempt || (isConstructorTypeVar && usage.paramTypeUsageCount > 0);
+
+            // Report error for local type variable that appears only in the return type
+            // or appears only once in a non-exempt context.
+            const isUsedOnlyInReturnType = usage.returnTypeUsageCount > 0 && usage.paramTypeUsageCount === 0;
+
+            if ((usage.nodes.length === 1 && !isExempt) || (isConstructorTypeVar && isUsedOnlyInReturnType)) {
                 let altTypeText: string;
 
                 if (isTypeVarTuple(usage.typeVar)) {

@@ -36,7 +36,7 @@ def rejects_concrete_bound[Bound: int](value: Bound[int], fallback: Bound) -> Bo
 
 # A TypeVar cannot be both an ordinary type and a constructor in one scope.
 # This should generate an error.
-def rejects_mixed_kind[T, Mixed: (Box[T], OtherBox[T])](value: Mixed, item: Mixed[int]) -> None:
+def rejects_mixed_kind[Mixed[T]: (Box[T], OtherBox[T])](value: Mixed, item: Mixed[int]) -> None:
     pass
 
 def f(box: Box) -> None:

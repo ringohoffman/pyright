@@ -10,9 +10,10 @@ import pyarrow.compute as pc
 
 T = TypeVar("T")
 _DataTypeT = TypeVar("_DataTypeT", bound=pa.DataType)
+_ScalarT = TypeVar("_ScalarT", bound=pa.Scalar[pa.DataType])
 _ContainerT = TypeVar(
 	"_ContainerT",
-	bound=pa.Array[pa.Scalar[pa.DataType]] | pa.ChunkedArray[pa.Scalar[pa.DataType]],
+	bound=pa.Array[_ScalarT] | pa.ChunkedArray[_ScalarT],
 )
 
 

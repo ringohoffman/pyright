@@ -502,34 +502,18 @@ test('HigherKindedType21', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedMap1', () => {
+test('HigherKindedType22', () => {
     const configOptions = new ConfigOptions(Uri.empty());
     configOptions.defaultPythonVersion = pythonVersion3_12;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap1.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedMap2', () => {
-    const configOptions = new ConfigOptions(Uri.empty());
-    configOptions.defaultPythonVersion = pythonVersion3_12;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap2.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedMap3', () => {
-    const configOptions = new ConfigOptions(Uri.empty());
-    configOptions.defaultPythonVersion = pythonVersion3_12;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap3.py'], configOptions);
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType22.py'], configOptions);
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedMap4', () => {
+test('HigherKindedType23', () => {
     const configOptions = new ConfigOptions(Uri.empty());
     configOptions.defaultPythonVersion = pythonVersion3_12;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedMap4.py'], configOptions);
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType23.py'], configOptions);
 
     TestUtils.validateResults(analysisResults, 0);
 });

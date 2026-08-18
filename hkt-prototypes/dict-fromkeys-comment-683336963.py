@@ -1,3 +1,4 @@
+# https://github.com/python/typing/issues/548#issuecomment-683336963
 from __future__ import annotations
 
 from collections.abc import Iterable, MutableMapping

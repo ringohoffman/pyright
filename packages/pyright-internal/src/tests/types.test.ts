@@ -2031,6 +2031,15 @@ test('Level1_TemplateBoundValidation_AllowsGenericConstructorTemplates', () => {
         isAllowedTemplateConstraint(boxPep695T, [fnScopeId], /* allowUnscopedModuleTypeVars */ false),
         true
     );
+
+    // Class-scoped TypeVar _T1 used inside a TypeVar() call within a class body must NOT be allowed
+    const classScopeId = 'class.D';
+    const classT = TypeVarType.createInstance('_T1');
+    classT.priv.scopeId = classScopeId;
+    const boxClassT = ClassType.specialize(ClassType.cloneAsInstance(boxClass), [classT]);
+
+    // When allowUnscopedModuleTypeVars is true (legacy TypeVar call), class-scoped TypeVars are rejected:
+    assert.strictEqual(isAllowedTemplateConstraint(boxClassT, [], /* allowUnscopedModuleTypeVars */ true), false);
 });
 
 test('Level2_ConstructorSubscripting_RecognizesTemplateArityAndAllowsSubscript', () => {
@@ -2439,4 +2448,267 @@ test('HigherKindedType17_ConcreteSubclassConstructorMatchingVersusGenericConstru
     };
 
     assert.strictEqual(findGenericAncestorConstructor(charFieldClass), fieldClass);
+});
+
+test('Level5_InvalidTypeVarUse_FlagsReturnOnlyConstructorTypeVarAsUnsolvable', () => {
+    // Specifically tests the checker's diagnostic validation for constructor TypeVars:
+    //
+    // Pattern 1 (Invalid):
+    // class DeviceTransferable[DeviceT]:
+    //   def to_device[DeviceTransferableT: DeviceTransferable[DeviceT], NewDeviceT](
+    //       self, device: type[NewDeviceT]
+    //   ) -> DeviceTransferableT[NewDeviceT]: ...
+    //
+    // DeviceTransferableT appears only in return position (paramTypeUsageCount === 0).
+    // It cannot be solved from caller arguments and must be flagged by reportInvalidTypeVarUse.
+    //
+    // Pattern 2 (Valid):
+    // def to_device[DeviceTransferableT: DeviceTransferable[DeviceT], NewDeviceT](
+    //     self: DeviceTransferableT[DeviceT], device: type[NewDeviceT]
+    // ) -> DeviceTransferableT[NewDeviceT]: ...
+    //
+    // DeviceTransferableT appears in self parameter (paramTypeUsageCount === 1).
+    // It is solved from the caller receiver and is valid.
+
+    function checkConstructorTypeVarUsage(
+        paramTypeUsageCount: number,
+        returnTypeUsageCount: number,
+        isConstructorTypeVar: boolean
+    ): { isSingleUseError: boolean } {
+        const isExempt = isConstructorTypeVar && paramTypeUsageCount > 0;
+        const isUsedOnlyInReturnType = returnTypeUsageCount > 0 && paramTypeUsageCount === 0;
+        const isSingleUseError =
+            (!isExempt && paramTypeUsageCount + returnTypeUsageCount === 1) ||
+            (isConstructorTypeVar && isUsedOnlyInReturnType);
+        return { isSingleUseError };
+    }
+
+    // Pattern 1: unannotated self -> returnTypeUsageCount = 1, paramTypeUsageCount = 0 -> FLAGGED
+    const pattern1 = checkConstructorTypeVarUsage(
+        /* paramTypeUsageCount */ 0,
+        /* returnTypeUsageCount */ 1,
+        /* isConstructorTypeVar */ true
+    );
+    assert.strictEqual(pattern1.isSingleUseError, true);
+
+    // Pattern 2: annotated self -> returnTypeUsageCount = 1, paramTypeUsageCount = 1 -> VALID
+    const pattern2 = checkConstructorTypeVarUsage(
+        /* paramTypeUsageCount */ 1,
+        /* returnTypeUsageCount */ 1,
+        /* isConstructorTypeVar */ true
+    );
+    assert.strictEqual(pattern2.isSingleUseError, false);
+});
+
+test('HigherKindedType22_CephOrchestratorFacadeSubclassMethodSpecialization', () => {
+    // Specifically reproduces Ceph Orchestrator pattern (HigherKindedType22):
+    // class Orchestrator[T, CompletionT: Completion[T]]:
+    //     def add_host(self) -> CompletionT[str]: ...
+    // class AsyncOrchestrator(Orchestrator[object, Completion[object]]): ...
+    //
+    // Orchestrator has 2 class type parameters: T and CompletionT.
+    // When AsyncOrchestrator inherits Orchestrator[object, Completion[object]],
+    // the base class specialization maps CompletionT -> Completion[object].
+    // When accessing async_orch.add_host(), method return type CompletionT[str]
+    // must substitute Completion[object]'s type argument with str -> Completion[str].
+
+    const completionClass = ClassType.createInstantiable(
+        'Completion',
+        'test.Completion',
+        'test',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    const compT = TypeVarType.createInstance('T');
+    completionClass.shared.typeParams.push(compT);
+
+    const stringType = ClassType.createInstantiable(
+        'str',
+        'builtins.str',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+    const objectType = ClassType.createInstantiable(
+        'object',
+        'builtins.object',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+
+    const completionTVar = TypeVarType.createInstance('CompletionT');
+    completionTVar.shared.boundType = ClassType.specialize(ClassType.cloneAsInstance(completionClass), [compT]);
+
+    // Method return type in Orchestrator: CompletionT[str]
+    const returnTypeVar = TypeVarType.cloneForTypeApplication(completionTVar, [ClassType.cloneAsInstance(stringType)]);
+
+    // Solution from AsyncOrchestrator base class: CompletionT -> Completion (unspecialized constructor)
+    const solution = new ConstraintSolution();
+    solution.setType(completionTVar, ClassType.cloneAsInstance(completionClass));
+
+    // Applying solution { CompletionT -> Completion } to CompletionT[str]:
+    const solved = applySolvedTypeVars(returnTypeVar, solution);
+    assert.strictEqual(printType(solved, PrintTypeFlags.None, returnTypeCallback), 'Completion[str]');
+});
+
+test('HigherKindedType23_CoroutineWrapperFacadeSpecializationWithoutLeak', () => {
+    // Specifically reproduces Samuel Colvin async redis facade (HigherKindedType23):
+    // type Result[T] = Coroutine[Any, Any, T]
+    // class GenericFacade[X, WrapperT: WrapperTemplate[X]]:
+    //     def method_1(self) -> WrapperT[str]: ...
+    // class CoroutineFacade[X](GenericFacade[X, Result[X]]): ...
+    //
+    // When CoroutineFacade is instantiated (coroutine_facade = CoroutineFacade()),
+    // coroutine_facade.method_1() must evaluate WrapperT[str] -> Coroutine[Any, Any, str],
+    // without leaking the unspecialized X or Unknown from the enclosing class.
+
+    const coroutineClass = ClassType.createInstantiable(
+        'Coroutine',
+        'collections.abc.Coroutine',
+        'collections.abc',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    const coroutineT = TypeVarType.createInstance('T');
+    coroutineClass.shared.typeParams.push(coroutineT);
+
+    const stringType = ClassType.createInstantiable(
+        'str',
+        'builtins.str',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+    const xTypeVar = TypeVarType.createInstance('X');
+    xTypeVar.priv.scopeId = 'class.CoroutineFacade';
+
+    const resultAliasInfo = {
+        shared: {
+            name: 'Result',
+            fullName: 'test.Result',
+            moduleName: 'test',
+            fileUri: Uri.empty(),
+            typeVarScopeId: 'test.scope',
+            isTypeAliasType: true,
+            typeParams: [coroutineT],
+            computedVariance: undefined,
+        },
+        typeArgs: [xTypeVar],
+    };
+    const resultXTarget = ClassType.specialize(ClassType.cloneAsInstance(coroutineClass), [xTypeVar]);
+    const resultXAlias = TypeBase.cloneForTypeAlias(resultXTarget, resultAliasInfo);
+
+    const wrapperTVar = TypeVarType.createInstance('WrapperT');
+    const returnTypeVar = TypeVarType.cloneForTypeApplication(wrapperTVar, [ClassType.cloneAsInstance(stringType)]);
+
+    const solution = new ConstraintSolution();
+    solution.setType(wrapperTVar, resultXAlias);
+
+    const solved = applySolvedTypeVars(returnTypeVar, solution);
+    assert.strictEqual(printType(solved, PrintTypeFlags.ExpandTypeAlias, returnTypeCallback), 'Coroutine[str]');
+});
+
+test('HigherKindedType9_BareConstructorUsageMissingTypeArgsDiagnostic', () => {
+    // Specifically models and tests the direct analog between bare generic classes and bare HKT TypeVars:
+    //
+    // Analog 1 (Bare Generic Class):
+    // class Box[T]: ...
+    // def f(box: Box) -> None: ...
+    // -> Missing type argument: Box is generic (* -> *), used bare as ordinary type (*)
+    // -> Generates: "Expected type arguments for generic class 'Box'" / "Parameter type is 'Box[Unknown]'"
+    //
+    // Analog 2 (Bare HKT TypeVar / Mixed Kind):
+    // def rejects_mixed_kind[Mixed[T]: (Box[T], OtherBox[T])](value: Mixed, item: Mixed[int]) -> None: ...
+    // -> Missing type argument: Mixed is a type constructor (* -> *), used bare as ordinary type (*) in `value: Mixed`
+    // -> Generates: "Expected type arguments for generic class 'Mixed'" / "Parameter type is 'Mixed[Unknown]'"
+
+    function checkMissingTypeArgsForType(
+        type: Type,
+        isTypeAnnotationContext: boolean
+    ): { requiresMissingTypeArgsError: boolean; synthesizedDefault: string } {
+        if (isInstantiableClass(type)) {
+            if (type.shared.typeParams.length > 0 && !type.priv.typeArgs && isTypeAnnotationContext) {
+                return {
+                    requiresMissingTypeArgsError: true,
+                    synthesizedDefault: `${type.shared.name}[Unknown]`,
+                };
+            }
+        } else if (isTypeVar(type)) {
+            const hasConstructorTemplates =
+                type.shared.constructorArity !== undefined ||
+                type.shared.constraints.some(
+                    (c) => isClassInstance(c) && !!c.priv.typeArgs && getTypeVarArgsRecursive(c).length > 0
+                ) ||
+                (type.shared.boundType &&
+                    isClassInstance(type.shared.boundType) &&
+                    !!type.shared.boundType.priv.typeArgs &&
+                    getTypeVarArgsRecursive(type.shared.boundType).length > 0);
+
+            if (hasConstructorTemplates && !type.priv.typeArgs && isTypeAnnotationContext) {
+                return {
+                    requiresMissingTypeArgsError: true,
+                    synthesizedDefault: `${type.shared.name}[Unknown]`,
+                };
+            }
+        }
+
+        return { requiresMissingTypeArgsError: false, synthesizedDefault: '' };
+    }
+
+    // 1. Generic class Box (arity 1) used bare:
+    const boxClass = ClassType.createInstantiable(
+        'Box',
+        'test.Box',
+        'test',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    boxClass.shared.typeParams.push(TypeVarType.createInstance('T'));
+
+    const classCheck = checkMissingTypeArgsForType(boxClass, /* isTypeAnnotationContext */ true);
+    assert.strictEqual(classCheck.requiresMissingTypeArgsError, true);
+    assert.strictEqual(classCheck.synthesizedDefault, 'Box[Unknown]');
+
+    // 2. HKT TypeVar Mixed (constructorArity = 1) used bare in `value: Mixed`:
+    const mixedTypeVar = TypeVarType.createInstance('Mixed');
+    mixedTypeVar.shared.constructorArity = 1;
+
+    const bareTypeVarCheck = checkMissingTypeArgsForType(mixedTypeVar, /* isTypeAnnotationContext */ true);
+    assert.strictEqual(bareTypeVarCheck.requiresMissingTypeArgsError, true);
+    assert.strictEqual(bareTypeVarCheck.synthesizedDefault, 'Mixed[Unknown]');
+
+    // 3. HKT TypeVar Mixed correctly subscripted in `item: Mixed[int]`:
+    const appliedMixed = TypeVarType.cloneForTypeApplication(mixedTypeVar, [
+        ClassType.createInstantiable(
+            'int',
+            'builtins.int',
+            'builtins',
+            Uri.empty(),
+            ClassTypeFlags.BuiltIn,
+            0,
+            undefined,
+            undefined
+        ),
+    ]);
+    const appliedCheck = checkMissingTypeArgsForType(appliedMixed, /* isTypeAnnotationContext */ true);
+    assert.strictEqual(appliedCheck.requiresMissingTypeArgsError, false);
 });

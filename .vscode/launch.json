@@ -64,7 +64,7 @@
                 "--pythonpath",
                 "${workspaceRoot}/.venv/bin/python",
                 "--project",
-                "${workspaceRoot}/hkt-prototypes/pyarrow-cast/pyrightconfig.json",
+                "${workspaceRoot}/hkt-prototypes/pyrightconfig.json",
             ],
             "internalConsoleOptions": "openOnSessionStart",
             "outFiles": [
@@ -133,7 +133,7 @@
                 "--disable-extension=ms-python.isort",
                 "--disable-extension=ms-pyright.pyright",
                 "--disable-extension=GitHub.copilot-chat",
-                "${workspaceFolder}/hkt-prototypes/pyarrow-cast"
+                "${workspaceFolder}/hkt-prototypes"
             ],
             "smartStep": true,
             "sourceMaps": true,

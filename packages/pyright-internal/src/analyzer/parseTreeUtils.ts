@@ -869,6 +869,13 @@ export function getEvaluationScopeNode(node: ParseNode): EvaluationScopeInfo {
         // we'll return this scope, but in a few cases we need to return
         // the enclosing scope instead.
         switch (curNode.nodeType) {
+            case ParseNodeType.TypeParameter: {
+                if (curNode.d.typeParams && (prevNode === curNode.d.boundExpr || prevNode === curNode.d.defaultExpr)) {
+                    return { node: curNode.d.typeParams, useProxyScope: true, useChainedModuleLevelScopes };
+                }
+                break;
+            }
+
             case ParseNodeType.TypeParameterList: {
                 return { node: curNode, useProxyScope: true, useChainedModuleLevelScopes };
             }
@@ -1042,6 +1049,13 @@ export function getTypeVarScopeNode(node: ParseNode): TypeParameterScopeNode | u
             case ParseNodeType.TypeAlias: {
                 return curNode;
             }
+
+            case ParseNodeType.TypeParameter: {
+                if (curNode.d.typeParams) {
+                    return curNode;
+                }
+                break;
+            }
         }
 
         prevNode = curNode;
@@ -1066,10 +1080,24 @@ export function getExecutionScopeNode(node: ParseNode): ExecutionScopeNode {
         evaluationScope.nodeType === ParseNodeType.Class ||
         evaluationScope.nodeType === ParseNodeType.Comprehension
     ) {
-        evaluationScope = getEvaluationScopeNode(evaluationScope.parent!).node;
+        let parentToEvaluate: ParseNode | undefined = evaluationScope.parent;
+        while (parentToEvaluate?.nodeType === ParseNodeType.TypeParameter) {
+            parentToEvaluate = parentToEvaluate.parent;
+        }
+        if (!parentToEvaluate) {
+            break;
+        }
+        evaluationScope = getEvaluationScopeNode(parentToEvaluate).node;
     }
 
-    return evaluationScope;
+    assert(
+        evaluationScope.nodeType === ParseNodeType.Lambda ||
+            evaluationScope.nodeType === ParseNodeType.Function ||
+            evaluationScope.nodeType === ParseNodeType.Module ||
+            evaluationScope.nodeType === ParseNodeType.TypeParameterList
+    );
+
+    return evaluationScope as ExecutionScopeNode;
 }
 
 // Given a node within a type annotation expression, returns the type annotation
@@ -2661,6 +2689,8 @@ export function getScopeIdForNode(node: ParseNode): string {
     if (node.nodeType === ParseNodeType.Class) {
         name = node.d.name.d.value;
     } else if (node.nodeType === ParseNodeType.Function) {
+        name = node.d.name.d.value;
+    } else if (node.nodeType === ParseNodeType.TypeParameter) {
         name = node.d.name.d.value;
     }
 

@@ -1051,7 +1051,7 @@ export function getTypeVarScopeNode(node: ParseNode): TypeParameterScopeNode | u
             }
 
             case ParseNodeType.TypeParameter: {
-                if (curNode.d.typeParams) {
+                if (curNode !== node && curNode.d.typeParams) {
                     return curNode;
                 }
                 break;
@@ -2705,6 +2705,10 @@ export function getTypeVarScopesForNode(node: ParseNode): TypeVarScopeId[] {
 
     let curNode: ParseNode | undefined = node;
     while (curNode) {
+        if (curNode.nodeType === ParseNodeType.TypeParameter && curNode.d.typeParams) {
+            scopeIds.push(getScopeIdForNode(curNode));
+        }
+
         curNode = getTypeVarScopeNode(curNode);
         if (!curNode) {
             break;

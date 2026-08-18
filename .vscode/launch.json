@@ -133,6 +133,7 @@
                 "--disable-extension=ms-python.isort",
                 "--disable-extension=ms-pyright.pyright",
                 "--disable-extension=GitHub.copilot-chat",
+                "--disable-extension=Continue.continue",
                 "${workspaceFolder}/hkt-prototypes"
             ],
             "smartStep": true,

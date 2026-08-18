@@ -22,6 +22,7 @@ import {
     isTypeVar,
     Type,
     TypeBase,
+    TypeVarScopeType,
     TypeVarType,
     UnknownType,
     Variance,
@@ -2535,16 +2536,6 @@ test('HigherKindedType22_CephOrchestratorFacadeSubclassMethodSpecialization', ()
         undefined,
         undefined
     );
-    const objectType = ClassType.createInstantiable(
-        'object',
-        'builtins.object',
-        'builtins',
-        Uri.empty(),
-        ClassTypeFlags.BuiltIn,
-        0,
-        undefined,
-        undefined
-    );
 
     const completionTVar = TypeVarType.createInstance('CompletionT');
     completionTVar.shared.boundType = ClassType.specialize(ClassType.cloneAsInstance(completionClass), [compT]);
@@ -2622,6 +2613,60 @@ test('HigherKindedType23_CoroutineWrapperFacadeSpecializationWithoutLeak', () =>
 
     const solved = applySolvedTypeVars(returnTypeVar, solution);
     assert.strictEqual(printType(solved, PrintTypeFlags.ExpandTypeAlias, returnTypeCallback), 'Coroutine[str]');
+});
+
+test('HigherKindedType24_UnsolvedHigherKindedTypeVarReplacedWithUnknownWithoutLeakingTypeVar', () => {
+    // Specifically reproduces mongo-model pattern (python/typing#548 comment 843663432):
+    // def find_one[IDT, MongoModelT[IDT]: MongoModel[IDT]](model_cls: type[MongoModelT[IDT]], id: IDT) -> MongoModelT[IDT]: ...
+    //
+    // When an incompatible/non-generic class (e.g. User) is passed to find_one,
+    // MongoModelT cannot be solved and remains unassigned in the constraint solution.
+    // When specializing the return type MongoModelT[IDT] with replaceUnsolved,
+    // the unsolved HKT TypeVar MUST be replaced with Unknown rather than leaking
+    // the raw unspecialized TypeVar (e.g. "MongoModelT@find_one[IDT@find_one]").
+
+    const functionScopeId = 'func.find_one';
+    const idtTypeVar = TypeVarType.createInstance('IDT');
+    idtTypeVar.priv.scopeId = functionScopeId;
+    idtTypeVar.priv.scopeName = 'find_one';
+    idtTypeVar.priv.scopeType = TypeVarScopeType.Function;
+
+    const mongoModelTVar = TypeVarType.createInstance('MongoModelT');
+    mongoModelTVar.priv.scopeId = functionScopeId;
+    mongoModelTVar.priv.scopeName = 'find_one';
+    mongoModelTVar.priv.scopeType = TypeVarScopeType.Function;
+    mongoModelTVar.shared.constructorArity = 1;
+
+    const returnTypeVar = TypeVarType.cloneForTypeApplication(mongoModelTVar, [idtTypeVar]);
+
+    // An empty solution where MongoModelT was not solved (e.g. due to type[User] failing match)
+    const solution = new ConstraintSolution();
+
+    const solved = applySolvedTypeVars(returnTypeVar, solution, {
+        replaceUnsolved: {
+            scopeIds: [functionScopeId],
+            tupleClassType: undefined,
+        },
+    });
+
+    assert.strictEqual(printType(solved, PrintTypeFlags.None, returnTypeCallback), 'Unknown');
+});
+
+test('HigherKindedType24_NestedTypeVarShadowingOuterScopeDetected', () => {
+    // Models PEP 695 type parameter shadowing:
+    // def find_one[IDT, MongoModelT[IDT]: MongoModel[IDT]](...):
+    // The inner dummy parameter IDT shadows the outer function-scoped IDT,
+    // which triggers the diagnostic: `TypeVar "IDT" is already in use by an outer scope`.
+
+    const outerTypeParams = [TypeVarType.createInstance('IDT'), TypeVarType.createInstance('MongoModelT')];
+    const innerDummyParam = TypeVarType.createInstance('IDT');
+
+    const isShadowed = outerTypeParams.some((param) => param.shared.name === innerDummyParam.shared.name);
+    assert.strictEqual(isShadowed, true);
+
+    const nonShadowedDummyParam = TypeVarType.createInstance('T');
+    const isNotShadowed = outerTypeParams.some((param) => param.shared.name === nonShadowedDummyParam.shared.name);
+    assert.strictEqual(isNotShadowed, false);
 });
 
 test('HigherKindedType9_BareConstructorUsageMissingTypeArgsDiagnostic', () => {

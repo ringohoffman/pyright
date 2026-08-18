@@ -1662,6 +1662,12 @@ export class Checker extends ParseTreeWalker {
                     foundDuplicate = true;
                     break;
                 }
+            } else if (typeVarScopeNode.nodeType === ParseNodeType.TypeAlias) {
+                const typeAliasInfo = this._evaluator.getType(typeVarScopeNode.d.name)?.props?.typeAliasInfo;
+                if (typeAliasInfo?.shared.typeParams?.some((param) => param.shared.name === node.d.name.d.value)) {
+                    foundDuplicate = true;
+                    break;
+                }
             }
 
             curNode = typeVarScopeNode.parent;
@@ -1673,6 +1679,10 @@ export class Checker extends ParseTreeWalker {
                 LocMessage.typeVarUsedByOuterScope().format({ name: node.d.name.d.value }),
                 node.d.name
             );
+        }
+
+        if (node.d.typeParams) {
+            this.walk(node.d.typeParams);
         }
 
         return false;
@@ -2504,8 +2514,7 @@ export class Checker extends ParseTreeWalker {
             // return position (`paramTypeUsageCount === 0`) because a return-only
             // constructor TypeVar is unsolvable by the caller.
             const isConstructorTypeVar = usage.typeVar.shared.constructorArity !== undefined;
-            const isExempt =
-                usage.isExempt || (isConstructorTypeVar && usage.paramTypeUsageCount > 0);
+            const isExempt = usage.isExempt || (isConstructorTypeVar && usage.paramTypeUsageCount > 0);
 
             // Report error for local type variable that appears only in the return type
             // or appears only once in a non-exempt context.

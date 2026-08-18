@@ -518,6 +518,14 @@ test('HigherKindedType23', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('HigherKindedType24', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_12;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType24.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 

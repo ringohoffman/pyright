@@ -1,0 +1,5 @@
+{
+    "include": ["cast_preserves_container.py", "pyarrow"],
+    "pythonVersion": "3.14",
+    "typeCheckingMode": "strict"
+}

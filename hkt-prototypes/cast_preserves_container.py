@@ -51,13 +51,18 @@ def cast_hkt(
 
 int_array: pa.Array[pa.Int64Scalar] = pa.array([1, 2, 3])
 string_array_overloaded = cast_overloaded(int_array, pa.string())
-reveal_type(string_array_overloaded)
+reveal_type(string_array_overloaded, expected_str="Array[Scalar[StringType]]")
 string_array_hkt = cast_hkt(int_array, pa.string())
-reveal_type(string_array_hkt)
+reveal_type(string_array_hkt, expected_str="IntegerArray[Scalar[StringType]]")
 
 int_chunks: pa.ChunkedArray[pa.Int64Scalar] = pa.chunked_array([[1, 2], [3]])
 string_chunks_overloaded = cast_overloaded(int_chunks, pa.string())
-reveal_type(string_chunks_overloaded)
+reveal_type(string_chunks_overloaded, expected_str="ChunkedArray[Scalar[StringType]]")
 string_chunks_hkt = cast_hkt(int_chunks, pa.string())
-reveal_type(string_chunks_hkt)
+reveal_type(string_chunks_hkt, expected_str="ChunkedArray[Scalar[StringType]]")
 
+int_array = pa.Int64Array([1, 2, 3])
+string_array_overloaded = cast_overloaded(int_array, pa.int32())
+reveal_type(string_array_overloaded, expected_str="Array[Scalar[Int32Type]]")
+string_array_hkt = cast_hkt(int_array, pa.int32())
+reveal_type(string_array_hkt, expected_str="IntegerArray[Scalar[Int32Type]]")

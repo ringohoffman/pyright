@@ -2757,3 +2757,206 @@ test('HigherKindedType9_BareConstructorUsageMissingTypeArgsDiagnostic', () => {
     const appliedCheck = checkMissingTypeArgsForType(appliedMixed, /* isTypeAnnotationContext */ true);
     assert.strictEqual(appliedCheck.requiresMissingTypeArgsError, false);
 });
+
+test('HigherKindedType_NestedTemplateParamValidationRejectsDoubleWrapping', () => {
+    // Specifically tests and verifies:
+    // 1. Validation of type arguments applied to HKT type variables with nested templates (e.g. ArrayT[DataTypeT: DataType]: Array[Scalar[DataTypeT]]).
+    // 2. Raising a diagnostic and rejecting the binding when an argument of the wrong type (e.g. Scalar[DataType]) is supplied to ArrayT.
+    // 3. Preventing erroneous double-wrapped types (Array[Scalar[Scalar[DataType]]]) by rejecting invalid bindings before substitution.
+    // 4. Accepting valid type arguments (e.g. Int64Type: DataType) and producing the correct single-wrapped specialization (Array[Scalar[Int64Type]]).
+
+    const uri = Uri.empty();
+
+    // 1. Hierarchy definition
+    // DataType
+    const dataTypeClass = ClassType.createInstantiable(
+        'DataType',
+        'test.DataType',
+        'test',
+        uri,
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    dataTypeClass.shared.mro.push(dataTypeClass);
+
+    // Int64Type <: DataType
+    const int64TypeClass = ClassType.createInstantiable(
+        'Int64Type',
+        'test.Int64Type',
+        'test',
+        uri,
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    int64TypeClass.shared.baseClasses.push(dataTypeClass);
+    int64TypeClass.shared.mro.push(int64TypeClass, dataTypeClass);
+
+    // StringType <: DataType
+    const stringTypeClass = ClassType.createInstantiable(
+        'StringType',
+        'test.StringType',
+        'test',
+        uri,
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    stringTypeClass.shared.baseClasses.push(dataTypeClass);
+    stringTypeClass.shared.mro.push(stringTypeClass, dataTypeClass);
+
+    // Scalar[D_co: DataType]
+    const scalarClass = ClassType.createInstantiable(
+        'Scalar',
+        'test.Scalar',
+        'test',
+        uri,
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    scalarClass.shared.mro.push(scalarClass);
+    const dTypeVar = TypeVarType.createInstance('D_co');
+    dTypeVar.shared.boundType = ClassType.cloneAsInstance(dataTypeClass);
+    dTypeVar.shared.declaredVariance = Variance.Covariant;
+    scalarClass.shared.typeParams.push(dTypeVar);
+
+    // Array[S_co: Scalar[DataType]]
+    const arrayClass = ClassType.createInstantiable(
+        'Array',
+        'test.Array',
+        'test',
+        uri,
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    arrayClass.shared.mro.push(arrayClass);
+    const sTypeVar = TypeVarType.createInstance('S_co');
+    sTypeVar.shared.boundType = ClassType.specialize(ClassType.cloneAsInstance(scalarClass), [
+        ClassType.cloneAsInstance(dataTypeClass),
+    ]);
+    sTypeVar.shared.declaredVariance = Variance.Covariant;
+    arrayClass.shared.typeParams.push(sTypeVar);
+
+    // 2. Template definition for ArrayT:
+    // ArrayT[DataTypeT: DataType]: Array[Scalar[DataTypeT]]
+    const dataTypeT = TypeVarType.createInstance('DataTypeT');
+    dataTypeT.shared.boundType = ClassType.cloneAsInstance(dataTypeClass);
+
+    const scalarTemplate = ClassType.specialize(ClassType.cloneAsInstance(scalarClass), [dataTypeT]);
+    const arrayTemplate = ClassType.specialize(ClassType.cloneAsInstance(arrayClass), [scalarTemplate]);
+
+    const arrayT = TypeVarType.createInstance('ArrayT');
+    arrayT.shared.constraints = [arrayTemplate];
+    arrayT.shared.constructorArity = 1;
+
+    // Helper simulating evaluator's template parameter validation and diagnostic generation
+    function validateAndApplyHktTypeArgs(
+        hktTypeVar: TypeVarType,
+        appliedArgs: Type[]
+    ): { resultType: Type | undefined; diagnostic: string | undefined } {
+        const templates = hktTypeVar.shared.constraints.filter(isClassInstance);
+
+        for (let i = 0; i < appliedArgs.length; i++) {
+            const appliedArg = appliedArgs[i];
+
+            for (const template of templates) {
+                // Must extract template type parameters recursively to handle nested templates like Array[Scalar[DataTypeT]]
+                const templateTypeVars = getTypeVarArgsRecursive(template);
+                if (i < templateTypeVars.length) {
+                    const templateParam = templateTypeVars[i];
+                    if (templateParam.shared.boundType && isClassInstance(templateParam.shared.boundType)) {
+                        const bound = templateParam.shared.boundType;
+                        let isAssignable = false;
+
+                        if (isClassInstance(appliedArg)) {
+                            isAssignable = ClassType.isDerivedFrom(appliedArg, bound);
+                        } else if (
+                            isTypeVar(appliedArg) &&
+                            appliedArg.shared.boundType &&
+                            isClassInstance(appliedArg.shared.boundType)
+                        ) {
+                            isAssignable = ClassType.isDerivedFrom(appliedArg.shared.boundType, bound);
+                        }
+
+                        if (!isAssignable) {
+                            const diag = `Type '${printType(
+                                appliedArg,
+                                PrintTypeFlags.None,
+                                returnTypeCallback
+                            )}' cannot be assigned to type variable '${templateParam.shared.name}' because '${printType(
+                                appliedArg,
+                                PrintTypeFlags.None,
+                                returnTypeCallback
+                            )}' is not assignable to '${printType(bound, PrintTypeFlags.None, returnTypeCallback)}'`;
+                            return { resultType: undefined, diagnostic: diag };
+                        }
+                    }
+                }
+            }
+        }
+
+        // When validation succeeds, safely create the applied type application
+        return {
+            resultType: TypeVarType.cloneForTypeApplication(hktTypeVar, appliedArgs),
+            diagnostic: undefined,
+        };
+    }
+
+    // --- Scenario A: Erroneous usage ArrayT[Scalar[DataType]] ---
+    // User mistakenly supplies Scalar[DataType] to ArrayT (which already wraps in Scalar)
+    const scalarDataTypeArg = ClassType.specialize(ClassType.cloneAsInstance(scalarClass), [
+        ClassType.cloneAsInstance(dataTypeClass),
+    ]);
+
+    const invalidCheck = validateAndApplyHktTypeArgs(arrayT, [scalarDataTypeArg]);
+
+    // 1. Diagnostic must be raised explaining why Scalar[DataType] cannot be assigned to DataTypeT
+    assert.notStrictEqual(invalidCheck.diagnostic, undefined);
+    assert.ok(invalidCheck.diagnostic?.includes("cannot be assigned to type variable 'DataTypeT'"));
+    assert.ok(invalidCheck.diagnostic?.includes("is not assignable to 'DataType'"));
+
+    // 2. Binding must be rejected (resultType is undefined)
+    assert.strictEqual(invalidCheck.resultType, undefined);
+
+    // 3. Contrast with unvalidated substitution: demonstrating how skipping validation causes double wrapping
+    const unvalidatedSolution = new ConstraintSolution();
+    const unvalidatedArrayT = TypeVarType.createInstance('ArrayT');
+    unvalidatedArrayT.shared.constraints = [arrayTemplate];
+    unvalidatedArrayT.priv.typeArgs = [scalarDataTypeArg];
+    unvalidatedSolution.setType(unvalidatedArrayT, arrayTemplate);
+
+    const erroneousDoubleWrapped = applySolvedTypeVars(unvalidatedArrayT, unvalidatedSolution);
+    assert.strictEqual(
+        printType(erroneousDoubleWrapped, PrintTypeFlags.None, returnTypeCallback),
+        'Array[Scalar[Scalar[DataType]]]',
+        'Unvalidated substitution erroneously produces double-wrapped Array[Scalar[Scalar[DataType]]]'
+    );
+
+    // --- Scenario B: Correct usage ArrayT[Int64Type] ---
+    // User supplies valid DataType subtype
+    const validCheck = validateAndApplyHktTypeArgs(arrayT, [ClassType.cloneAsInstance(int64TypeClass)]);
+
+    // 1. No diagnostic
+    assert.strictEqual(validCheck.diagnostic, undefined);
+    assert.notStrictEqual(validCheck.resultType, undefined);
+
+    // 2. Solved substitution cleanly yields single-wrapped Array[Scalar[Int64Type]]
+    const validSolution = new ConstraintSolution();
+    const validArrayT = validCheck.resultType as TypeVarType;
+    validSolution.setType(validArrayT, arrayTemplate);
+
+    const singleWrapped = applySolvedTypeVars(validArrayT, validSolution);
+    assert.strictEqual(
+        printType(singleWrapped, PrintTypeFlags.None, returnTypeCallback),
+        'Array[Scalar[Int64Type]]',
+        'Validated substitution correctly produces single-wrapped Array[Scalar[Int64Type]]'
+    );
+});

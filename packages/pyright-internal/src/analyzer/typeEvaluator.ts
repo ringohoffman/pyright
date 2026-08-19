@@ -8201,8 +8201,9 @@ export function createTypeEvaluator(
 
                         for (let i = 0; i < typeArgs.length; i++) {
                             for (const template of templates) {
-                                if (template.priv.typeArgs && i < template.priv.typeArgs.length) {
-                                    const templateParam = template.priv.typeArgs[i];
+                                const templateParams = getTypeVarArgsRecursive(template);
+                                if (i < templateParams.length) {
+                                    const templateParam = templateParams[i];
                                     if (isTypeVar(templateParam)) {
                                         const diag = new DiagnosticAddendum();
                                         const adjusted = applyTypeArgToTypeVar(templateParam, typeArgs[i], diag);

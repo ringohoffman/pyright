@@ -26612,7 +26612,7 @@ export function createTypeEvaluator(
                         const templateArg = matchedConstraint.priv.typeArgs[i];
                         const srcTypeArg = effectiveSrcClass.priv.typeArgs[i];
                         if (isTypeVar(templateArg) && srcTypeArg) {
-                            if (!assignType(templateArg, srcTypeArg, diag, constraints, flags, recursionCount)) {
+                            if (!assignType(templateArg, srcTypeArg, diag, /* constraints */ undefined, flags, recursionCount)) {
                                 return false;
                             }
                         }

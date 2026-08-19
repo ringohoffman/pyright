@@ -2960,3 +2960,90 @@ test('HigherKindedType_NestedTemplateParamValidationRejectsDoubleWrapping', () =
         'Validated substitution correctly produces single-wrapped Array[Scalar[Int64Type]]'
     );
 });
+
+test('HigherKindedType_CollectionTypeGuardNarrowingWithAppliedConstructor', () => {
+    // Tests the HKT TypeGuard narrowing scenario:
+    // def all_elements_type[V, CollectionT: Collection[V]](
+    //     collection: CollectionT[object],
+    //     element_type: type[V]
+    // ) -> TypeGuard[CollectionT[V]]
+
+    // 1. Create Collection[V] template
+    const vTypeVar = TypeVarType.createInstance('V');
+    const collectionClass = ClassType.createInstantiable(
+        'Collection',
+        'collections.abc.Collection',
+        'collections.abc',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    collectionClass.shared.typeParams.push(vTypeVar);
+
+    const collectionTemplate = ClassType.specialize(ClassType.cloneAsInstance(collectionClass), [vTypeVar]);
+
+    // 2. Create CollectionT HKT TypeVar with bound Collection[V] and constructorArity = 1
+    const collectionTVar = TypeVarType.createInstance('CollectionT');
+    collectionTVar.shared.boundType = collectionTemplate;
+    collectionTVar.shared.constructorArity = 1;
+
+    // 3. Create list[Any] argument type and int type
+    const listClass = ClassType.createInstantiable(
+        'list',
+        'builtins.list',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    const listTypeParam = TypeVarType.createInstance('_T');
+    listClass.shared.typeParams.push(listTypeParam);
+
+    const intClass = ClassType.createInstantiable(
+        'int',
+        'builtins.int',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+
+    // 4. In a call all_elements_type(my_list, int):
+    // - V is solved to int
+    // - CollectionT is solved to the unspecialized list constructor
+    const solution = new ConstraintSolution();
+    solution.setType(vTypeVar, ClassType.cloneAsInstance(intClass));
+    solution.setType(collectionTVar, ClassType.cloneAsInstance(listClass));
+
+    // 5. Applied return type is CollectionT[V]
+    const appliedCollectionT = TypeVarType.cloneForTypeApplication(collectionTVar, [vTypeVar]);
+
+    // 6. Applying solved type variables must produce list[int], not list[Any] or list[Unknown]
+    const solvedReturnType = applySolvedTypeVars(appliedCollectionT, solution);
+
+    assert.strictEqual(
+        printType(solvedReturnType, PrintTypeFlags.None, returnTypeCallback),
+        'list[int]',
+        'HKT CollectionT[V] with CollectionT=list and V=int must specialize to list[int]'
+    );
+
+    // 7. Contrast with erroneous solver state where CollectionT was recorded as specialized list[Any]
+    // instead of the unspecialized constructor list:
+    const listAnyInstance = ClassType.specialize(ClassType.cloneAsInstance(listClass), [AnyType.create()]);
+    const buggySolution = new ConstraintSolution();
+    buggySolution.setType(vTypeVar, ClassType.cloneAsInstance(intClass));
+    buggySolution.setType(collectionTVar, listAnyInstance);
+
+    const buggyReturnType = applySolvedTypeVars(appliedCollectionT, buggySolution);
+    assert.strictEqual(
+        printType(buggyReturnType, PrintTypeFlags.None, returnTypeCallback),
+        'list[Any]',
+        'Demonstrates solver gap: when CollectionT is solved to list[Any], CollectionT[V] remains list[Any] instead of specializing to list[int]'
+    );
+});

@@ -18100,10 +18100,18 @@ export function createTypeEvaluator(
         typeParams.forEach((typeParam, index) => {
             assert(typeParams !== undefined);
             let bestErrorNode = errorNode;
+            let typeParamNode: TypeParameterNode | undefined;
             if (typeParamNodes && index < typeParamNodes.length) {
-                bestErrorNode = typeParamNodes[index].d.defaultExpr ?? typeParamNodes[index].d.name;
+                typeParamNode = typeParamNodes[index];
+                bestErrorNode = typeParamNode.d.defaultExpr ?? typeParamNode.d.name;
             }
-            validateTypeParamDefault(bestErrorNode, typeParam, typeParams.slice(0, index), sharedInfo.typeVarScopeId);
+            validateTypeParamDefault(
+                bestErrorNode,
+                typeParam,
+                typeParams.slice(0, index),
+                sharedInfo.typeVarScopeId,
+                typeParamNode
+            );
         });
 
         // Verify that we have at most one TypeVarTuple.
@@ -19376,15 +19384,17 @@ export function createTypeEvaluator(
             // Validate the default types for all type parameters.
             classType.shared.typeParams.forEach((typeParam, index) => {
                 let bestErrorNode: ExpressionNode = node.d.name;
+                let typeParamNode: TypeParameterNode | undefined;
                 if (node.d.typeParams && index < node.d.typeParams.d.params.length) {
-                    const typeParamNode = node.d.typeParams.d.params[index];
+                    typeParamNode = node.d.typeParams.d.params[index];
                     bestErrorNode = typeParamNode.d.defaultExpr ?? typeParamNode.d.name;
                 }
                 validateTypeParamDefault(
                     bestErrorNode,
                     typeParam,
                     classType.shared.typeParams.slice(0, index),
-                    classType.shared.typeVarScopeId!
+                    classType.shared.typeVarScopeId!,
+                    typeParamNode
                 );
             });
 
@@ -19778,7 +19788,8 @@ export function createTypeEvaluator(
         errorNode: ExpressionNode,
         typeParam: TypeVarType,
         otherLiveTypeParams: TypeVarType[],
-        scopeId: TypeVarScopeId
+        scopeId: TypeVarScopeId,
+        typeParamNode?: TypeParameterNode
     ) {
         if (!typeParam.shared.isDefaultExplicit && !typeParam.shared.isSynthesized && !TypeVarType.isSelf(typeParam)) {
             const typeVarWithDefault = otherLiveTypeParams.find(
@@ -19798,8 +19809,32 @@ export function createTypeEvaluator(
             return;
         }
 
+        const liveTypeParams = [...otherLiveTypeParams];
+        if (typeParamNode?.d.typeParams) {
+            typeParamNode.d.typeParams.d.params.forEach((paramNode) => {
+                const paramType = getTypeOfTypeParam(paramNode);
+                if (isTypeVar(paramType)) {
+                    liveTypeParams.push(paramType);
+                }
+            });
+        }
+        if (typeParam.shared.boundType) {
+            getTypeVarArgsRecursive(typeParam.shared.boundType).forEach((tv) => {
+                if (isTypeVar(tv) && !liveTypeParams.some((p) => p.shared.name === tv.shared.name)) {
+                    liveTypeParams.push(tv);
+                }
+            });
+        }
+        typeParam.shared.constraints.forEach((constraint) => {
+            getTypeVarArgsRecursive(constraint).forEach((tv) => {
+                if (isTypeVar(tv) && !liveTypeParams.some((p) => p.shared.name === tv.shared.name)) {
+                    liveTypeParams.push(tv);
+                }
+            });
+        });
+
         const invalidTypeVars = new Set<string>();
-        validateTypeVarDefault(typeParam, otherLiveTypeParams, invalidTypeVars);
+        validateTypeVarDefault(typeParam, liveTypeParams, invalidTypeVars);
 
         // If we found one or more unapplied type variable, report an error.
         if (invalidTypeVars.size > 0) {
@@ -20760,8 +20795,9 @@ export function createTypeEvaluator(
             // Validate the default types for all type parameters.
             functionType.shared.typeParams.forEach((typeParam, index) => {
                 let bestErrorNode: ExpressionNode = node.d.name;
+                let typeParamNode: TypeParameterNode | undefined;
                 if (node.d.typeParams && index < node.d.typeParams.d.params.length) {
-                    const typeParamNode = node.d.typeParams.d.params[index];
+                    typeParamNode = node.d.typeParams.d.params[index];
                     bestErrorNode = typeParamNode.d.defaultExpr ?? typeParamNode.d.name;
                 }
 
@@ -20769,7 +20805,8 @@ export function createTypeEvaluator(
                     bestErrorNode,
                     typeParam,
                     functionType.shared.typeParams.slice(0, index),
-                    functionType.shared.typeVarScopeId!
+                    functionType.shared.typeVarScopeId!,
+                    typeParamNode
                 );
             });
 

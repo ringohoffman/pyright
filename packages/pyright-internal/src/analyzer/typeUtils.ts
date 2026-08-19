@@ -4345,7 +4345,7 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
 
             // Preserve the selected higher-kinded constructor family when the solved
             // replacement specializes a generic constructor or template.
-            if (typeVar.priv.typeArgs && isClass(resolvedReplacement)) {
+            if (typeVar.priv.typeArgs) {
                 const appliedTypeArgs = typeVar.priv.typeArgs.map((typeArg) => this.apply(typeArg, recursionCount));
                 const aliasInfo = resolvedReplacement.props?.typeAliasInfo;
                 if (aliasInfo?.shared.typeParams && aliasInfo.shared.typeParams.length === appliedTypeArgs.length) {
@@ -4367,58 +4367,60 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                         ...aliasInfo,
                         typeArgs: appliedTypeArgs,
                     });
-                } else if (!resolvedReplacement.priv.typeArgs) {
-                    if (resolvedReplacement.shared.typeParams.length === appliedTypeArgs.length) {
-                        resolvedReplacement = ClassType.specialize(
-                            resolvedReplacement,
-                            appliedTypeArgs,
-                            /* isTypeArgExplicit */ undefined,
-                            /* includeSubclasses */ true
-                        );
-                    } else {
-                        // If typeVar has a template bound/constraint (e.g. DictT: _dict2[_T, Any]),
-                        // specialize the template using the applied type arguments.
-                        const template =
-                            typeVar.shared.boundType && isClassInstance(typeVar.shared.boundType)
-                                ? typeVar.shared.boundType
-                                : typeVar.shared.constraints.find(
-                                      (c): c is ClassType => isClassInstance(c) && !!c.priv.typeArgs
-                                  );
-                        if (template?.priv.typeArgs) {
-                            const templateTypeVars = getTypeVarArgsRecursive(template);
-                            if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
-                                const templateSolution = new ConstraintSolution();
-                                for (let i = 0; i < templateTypeVars.length; i++) {
-                                    templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
-                                }
-                                const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
-                                    applySolvedTypeVars(arg, templateSolution)
-                                );
-                                if (resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length) {
-                                    resolvedReplacement = ClassType.specialize(
-                                        resolvedReplacement,
-                                        specializedTemplateArgs,
-                                        /* isTypeArgExplicit */ undefined,
-                                        /* includeSubclasses */ true
+                } else if (isClass(resolvedReplacement)) {
+                    if (!resolvedReplacement.priv.typeArgs) {
+                        if (resolvedReplacement.shared.typeParams.length === appliedTypeArgs.length) {
+                            resolvedReplacement = ClassType.specialize(
+                                resolvedReplacement,
+                                appliedTypeArgs,
+                                /* isTypeArgExplicit */ undefined,
+                                /* includeSubclasses */ true
+                            );
+                        } else {
+                            // If typeVar has a template bound/constraint (e.g. DictT: _dict2[_T, Any]),
+                            // specialize the template using the applied type arguments.
+                            const template =
+                                typeVar.shared.boundType && isClassInstance(typeVar.shared.boundType)
+                                    ? typeVar.shared.boundType
+                                    : typeVar.shared.constraints.find(
+                                          (c): c is ClassType => isClassInstance(c) && !!c.priv.typeArgs
+                                      );
+                            if (template?.priv.typeArgs) {
+                                const templateTypeVars = getTypeVarArgsRecursive(template);
+                                if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
+                                    const templateSolution = new ConstraintSolution();
+                                    for (let i = 0; i < templateTypeVars.length; i++) {
+                                        templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
+                                    }
+                                    const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
+                                        applySolvedTypeVars(arg, templateSolution)
                                     );
+                                    if (resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length) {
+                                        resolvedReplacement = ClassType.specialize(
+                                            resolvedReplacement,
+                                            specializedTemplateArgs,
+                                            /* isTypeArgExplicit */ undefined,
+                                            /* includeSubclasses */ true
+                                        );
+                                    } else {
+                                        resolvedReplacement = UnknownType.create();
+                                    }
                                 } else {
                                     resolvedReplacement = UnknownType.create();
                                 }
                             } else {
                                 resolvedReplacement = UnknownType.create();
                             }
-                        } else {
-                            resolvedReplacement = UnknownType.create();
                         }
-                    }
-                } else {
-                    const templateTypeVars = getTypeVarArgsRecursive(resolvedReplacement);
-                    if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
-                        const templateSolution = new ConstraintSolution();
-                        for (let i = 0; i < templateTypeVars.length; i++) {
-                            templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
+                    } else {
+                        const templateTypeVars = getTypeVarArgsRecursive(resolvedReplacement);
+                        if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
+                            const templateSolution = new ConstraintSolution();
+                            for (let i = 0; i < templateTypeVars.length; i++) {
+                                templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
+                            }
+                            resolvedReplacement = applySolvedTypeVars(resolvedReplacement, templateSolution);
                         }
-                        resolvedReplacement = applySolvedTypeVars(resolvedReplacement, templateSolution);
                     }
                 }
             }

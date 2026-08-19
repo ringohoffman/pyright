@@ -10,7 +10,12 @@ import * as assert from 'assert';
 
 import { ConstraintSolution } from '../analyzer/constraintSolution';
 import { printType, PrintTypeFlags } from '../analyzer/typePrinter';
-import { applySolvedTypeVars, computeMroLinearization, getTypeVarArgsRecursive } from '../analyzer/typeUtils';
+import {
+    applySolvedTypeVars,
+    computeMroLinearization,
+    getTypeVarArgsRecursive,
+    validateTypeVarDefault,
+} from '../analyzer/typeUtils';
 import {
     AnyType,
     ClassType,
@@ -3047,3 +3052,187 @@ test('HigherKindedType_CollectionTypeGuardNarrowingWithAppliedConstructor', () =
         'Demonstrates solver gap: when CollectionT is solved to list[Any], CollectionT[V] remains list[Any] instead of specializing to list[int]'
     );
 });
+
+function createTypeAliasInfo(name: string, typeParams: TypeVarType[], unspecializedType: Type, typeArgs?: Type[]) {
+    return {
+        shared: {
+            name,
+            fullName: name,
+            moduleName: 'test',
+            fileUri: Uri.empty(),
+            typeVarScopeId: 'test_alias_scope',
+            isTypeAliasType: true,
+            typeParams,
+            computedVariance: undefined,
+            unspecializedType,
+        },
+        typeArgs,
+    };
+}
+
+test('HigherKindedType_TypeVarDefault_ScopedTemplateParamValidation', () => {
+    // Specifically tests why:
+    // class A[WrapperT[T] = Identity[T]]:
+    // raises "Type parameter 'WrapperT' has a default type that refers to one or more type variables that are out of scope.
+    //          Type variable 'T' is not in scope"
+    //
+    // Context:
+    // 1. T is a local template parameter belonging to the declaration header of WrapperT[T].
+    // 2. When validateTypeVarDefault is called for WrapperT, liveTypeParams only contains outer/preceding
+    //    class parameters (which is empty here).
+    // 3. T is therefore marked as invalid (out-of-scope) unless WrapperT's own template parameters are included.
+
+    const tTypeVar = TypeVarType.createInstance('T');
+    const identityAlias = TypeBase.cloneForTypeAlias(
+        tTypeVar,
+        createTypeAliasInfo('Identity', [tTypeVar], tTypeVar, [tTypeVar])
+    );
+
+    const wrapperT = TypeVarType.createInstance('WrapperT');
+    wrapperT.shared.constructorArity = 1;
+    wrapperT.shared.isDefaultExplicit = true;
+    wrapperT.shared.defaultType = identityAlias;
+
+    // Outer live parameters (empty for the first type parameter of class A)
+    const outerLiveParams: TypeVarType[] = [];
+
+    // Validating against only outer params reproduces the false-positive diagnostic:
+    const invalidTypeVarsWithOnlyOuterScope = new Set<string>();
+    validateTypeVarDefault(wrapperT, outerLiveParams, invalidTypeVarsWithOnlyOuterScope);
+    assert.strictEqual(
+        invalidTypeVarsWithOnlyOuterScope.has('T'),
+        true,
+        'Demonstrates scope gap: validator fails because T is not in outerLiveParams'
+    );
+
+    // When the template parameter T is recognized as in-scope for WrapperT[T]:
+    const liveParamsWithTemplate: TypeVarType[] = [tTypeVar];
+    const invalidTypeVarsWithTemplate = new Set<string>();
+    validateTypeVarDefault(wrapperT, liveParamsWithTemplate, invalidTypeVarsWithTemplate);
+    assert.strictEqual(
+        invalidTypeVarsWithTemplate.size,
+        0,
+        'T is valid and in-scope when WrapperT template parameters are included'
+    );
+});
+
+test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
+    // Specifically tests why:
+    // reveal_type(A().foo(), expected_text="int") -> expected "int" but received "T@WrapperT"
+    //
+    // Python source (hkt-prototypes/awaitable-comment-1000492498.py):
+    //   type Identity[T] = T
+    //   class A[WrapperT[T] = Identity[T]]:
+    //       def foo(self) -> WrapperT[int]: ...
+    //
+    // Context:
+    // 1. `Identity[T]` is transparent: as a type *constructor* its value is just the
+    //    nested constructor type variable T itself (the alias adds no structure).
+    // 2. When A() is default-instantiated, the class specialization solves
+    //    WrapperT to that constructor value, i.e. the bare nested TypeVar T
+    //    (scope: WrapperT), NOT the alias instance Identity[T].
+    // 3. Applying that solution to the return type WrapperT[int] must splice the
+    //    applied type argument [int] into the constructor value, yielding int.
+    // 4. Pinpoint: ApplySolvedTypeVarsTransformer.transformTypeVar (typeUtils.ts)
+    //    only splices typeVar.priv.typeArgs when isClass(resolvedReplacement).
+    //    A bare TypeVar replacement (the Identity constructor value) skips the
+    //    splice, drops [int], and the nested type variable T leaks through.
+    const tTypeVar = TypeVarType.createInstantiable('T');
+    tTypeVar.priv.scopeId = 'class.A.WrapperT';
+    tTypeVar.priv.scopeName = 'WrapperT';
+    tTypeVar.priv.nameWithScope = 'T@WrapperT';
+
+    const intClass = ClassType.createInstantiable(
+        'int',
+        'builtins.int',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+
+    const wrapperT = TypeVarType.createInstance('WrapperT');
+    wrapperT.shared.constructorArity = 1;
+
+    // The default constructor value: the unspecialized Identity constructor,
+    // which reduces to its nested type variable T (the alias is transparent).
+    const wrapperTConstructorValue = tTypeVar;
+
+    // Applied return type: WrapperT[int]
+    const appliedWrapperT = TypeVarType.cloneForTypeApplication(wrapperT, [ClassType.cloneAsInstance(intClass)]);
+
+    // Solution from A() default specialization: WrapperT -> Identity (as a
+    // constructor value, the bare nested TypeVar T).
+    const solution = new ConstraintSolution();
+    solution.setType(wrapperT, wrapperTConstructorValue);
+
+    const solvedReturnType = applySolvedTypeVars(appliedWrapperT, solution);
+    const printedType = printType(solvedReturnType, PrintTypeFlags.None, returnTypeCallback);
+
+    // The applied type argument [int] must be spliced into the constructor
+    // value (int substitutes for T), NOT dropped in favor of T@WrapperT.
+    assert.strictEqual(
+        printedType,
+        'int',
+        'applySolvedTypeVars must splice WrapperT[int].typeArgs into the solved constructor value ' +
+            '(T -> int); today the isClass(resolvedReplacement) guard at the splice site skips ' +
+            `TypeVar replacements, so the result leaks as "${printedType}"`
+    );
+});
+test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
+    // Specifically tests why:
+    // reveal_type(A().foo(), expected_text="int") -> expected "int" but received "T@WrapperT"
+    //
+    // Context:
+    // 1. type Identity[T] = T
+    // 2. A default is WrapperT = Identity[T]
+    // 3. A.foo return type is WrapperT[int] (an applied TypeVar with typeArgs = [int])
+    // 4. When A() is default-instantiated, WrapperT solves to Identity[T]
+    // 5. Applying solution { WrapperT -> Identity[T] } to WrapperT[int] must specialize Identity[int] -> int.
+    // 6. Currently, applySolvedTypeVars only handles class replacements (isClass) when specializing
+    //    applied TypeVars (typeVar.priv.typeArgs), so a TypeVar-aliased Identity[T] ignores typeArgs and leaks T.
+
+    const tTypeVar = TypeVarType.createInstance('T');
+    tTypeVar.priv.scopeName = 'WrapperT';
+
+    const intClass = ClassType.createInstantiable(
+        'int',
+        'builtins.int',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+
+    const identityAlias = TypeBase.cloneForTypeAlias(
+        tTypeVar,
+        createTypeAliasInfo('Identity', [tTypeVar], tTypeVar, [tTypeVar])
+    );
+
+    const wrapperT = TypeVarType.createInstance('WrapperT');
+    wrapperT.shared.constructorArity = 1;
+    wrapperT.shared.isDefaultExplicit = true;
+    wrapperT.shared.defaultType = identityAlias;
+
+    // Applied return type: WrapperT[int]
+    const appliedWrapperT = TypeVarType.cloneForTypeApplication(wrapperT, [ClassType.cloneAsInstance(intClass)]);
+
+    // Solution when A() uses default: WrapperT -> Identity[T]
+    const solution = new ConstraintSolution();
+    solution.setType(wrapperT, identityAlias);
+
+    const solvedReturnType = applySolvedTypeVars(appliedWrapperT, solution);
+    const printedType = printType(solvedReturnType, PrintTypeFlags.None, returnTypeCallback);
+
+    // Solved return type is specialized Identity[int] rather than leaking T@WrapperT:
+    assert.strictEqual(
+        printedType,
+        'Identity[int]',
+        'Specialization succeeds: applySolvedTypeVars returns specialized Identity[int] rather than unspecialized T@WrapperT'
+    );
+});
+

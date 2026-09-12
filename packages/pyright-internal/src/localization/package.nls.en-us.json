@@ -2099,6 +2099,10 @@
         "typeIncompatible": "\"{sourceType}\" is not assignable to \"{destType}\"",
         "typeNotClass": "\"{type}\" is not a class",
         "typeNotGenericConstructor": "\"{type}\" is not a generic type constructor",
+        "typeVarConstructorTypeParamCountMismatch": "\"{type}\" has {received} type parameters, but type constructor \"{name}\" requires {expected}",
+        "typeVarConstructorBoundContext": "Type constructor \"{name}\" has upper bound \"{bound}\"",
+        "typeVarConstructorConstraintContext": "Type constructor \"{name}\" is constrained to ({constraints})",
+        "typeVarConstructorCannotPartiallyApply": "Generic class \"{type}\" cannot be partially applied to satisfy type constructor \"{name}\"",
         "typeNotStringLiteral": "\"{type}\" is not a string literal",
         "typeOfSymbol": "Type of \"{name}\" is \"{type}\"",
         "typeParamSpec": {

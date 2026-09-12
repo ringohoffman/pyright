@@ -2508,12 +2508,12 @@ export class Checker extends ParseTreeWalker {
         }
 
         localTypeVarUsage.forEach((usage) => {
-            // If the TypeVar is an HKT constructor (constructorArity !== undefined),
+            // If the TypeVar is an HKT constructor (isConstructor),
             // it is exempt from the single-use check when it appears in input parameters
             // (e.g. `def accepts(x: F[int]) -> None`), but NOT if it appears only in
             // return position (`paramTypeUsageCount === 0`) because a return-only
             // constructor TypeVar is unsolvable by the caller.
-            const isConstructorTypeVar = usage.typeVar.shared.constructorArity !== undefined;
+            const isConstructorTypeVar = TypeVarType.isConstructor(usage.typeVar);
             const isExempt = usage.isExempt || (isConstructorTypeVar && usage.paramTypeUsageCount > 0);
 
             // Report error for local type variable that appears only in the return type

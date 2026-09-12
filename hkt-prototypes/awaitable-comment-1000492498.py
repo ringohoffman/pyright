@@ -9,6 +9,9 @@ class A[WrapperT[T] = Identity[T]]:
    def bar(self)-> WrapperT[bool]: ...
 
 
+
+# should this be defined as AsyncA(A[Awaitable[T]]) ? it seems strange that we don't declare the argument as a type constructor / generic type constructor ... what if we wanted to define it as a partially generic type constructor?
+# and what would the real implementation look like? how do we actually turn supplying A[Awaitable] into a switch to actually return Awaitable?
 class AsyncA(A[Awaitable]):
    ...
 

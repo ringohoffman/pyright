@@ -34,3 +34,7 @@ reveal_type(valid, expected_text="Array[IntScalar]")
 
 # This should generate an error because X violates the template parameter bound.
 preserve(Array[NotScalar]())
+
+
+def preserve2[F[S: Scalar], X](value: F[X]) -> F[X]:
+    raise NotImplementedError

@@ -2846,8 +2846,9 @@ export interface TypeVarDetailsShared {
     name: string;
     constraints: Type[];
     boundType: Type | undefined;
-    constructorArity: number | undefined;
     requiresTupleMapTranspose: boolean;
+    typeParams: TypeVarType[];
+    typeVarScopeId?: TypeVarScopeId | undefined;
     isDefaultExplicit: boolean;
     defaultType: Type;
 
@@ -3201,7 +3202,8 @@ export namespace TypeVarType {
                 name,
                 constraints: [],
                 boundType: undefined,
-                constructorArity: undefined,
+                typeParams: [],
+                typeVarScopeId: undefined,
                 requiresTupleMapTranspose: false,
                 isDefaultExplicit: false,
                 defaultType: UnknownType.create(),
@@ -3216,6 +3218,10 @@ export namespace TypeVarType {
             priv: {},
         };
         return newTypeVarType;
+    }
+
+    export function isConstructor(type: TypeVarType): boolean {
+        return type.shared.typeParams.length > 0;
     }
 
     export function addConstraint(type: TypeVarType, constraintType: Type) {
@@ -3730,6 +3736,20 @@ export function isTypeSame(type1: Type, type2: Type, options: TypeSameOptions = 
                 type1.priv.scopeId !== type2TypeVar.priv.scopeId
             ) {
                 return false;
+            }
+
+            const typeParams1 = type1.shared.typeParams;
+            const typeParams2 = type2TypeVar.shared.typeParams;
+            if (typeParams1.length !== typeParams2.length) {
+                return false;
+            }
+
+            for (let i = 0; i < typeParams1.length; i++) {
+                if (
+                    !isTypeSame(typeParams1[i], typeParams2[i], { ...options, ignoreTypeFlags: false }, recursionCount)
+                ) {
+                    return false;
+                }
             }
 
             const boundType1 = type1.shared.boundType;

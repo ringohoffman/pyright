@@ -2503,7 +2503,9 @@ export function createTypeEvaluator(
                     const declaredType = getDeclaredTypeOfSymbol(unspecializedMember.symbol)?.type;
                     if (declaredType) {
                         const checkHkt = (fn: FunctionType) =>
-                            FunctionType.isClassMethod(fn) &&
+                            (FunctionType.isClassMethod(fn) ||
+                                ((flags & MemberAccessFlags.TreatConstructorAsClassMethod) !== 0 &&
+                                    FunctionType.isConstructorMethod(fn))) &&
                             fn.shared.parameters.length > 0 &&
                             isTypeVar(FunctionType.getParamType(fn, 0)) &&
                             (FunctionType.getParamType(fn, 0) as any).priv.typeArgs !== undefined;
@@ -4571,6 +4573,23 @@ export function createTypeEvaluator(
                             }
                         }
 
+                        if (subtype.priv.typeArgs) {
+                            const templateTypeVars =
+                                subtype.shared.typeParams.length > 0
+                                    ? subtype.shared.typeParams
+                                    : getTypeVarArgsRecursive(constraintType);
+                            if (
+                                templateTypeVars.length > 0 &&
+                                templateTypeVars.length === subtype.priv.typeArgs.length
+                            ) {
+                                const templateSolution = new ConstraintSolution();
+                                for (let i = 0; i < templateTypeVars.length; i++) {
+                                    templateSolution.setType(templateTypeVars[i], subtype.priv.typeArgs[i]);
+                                }
+                                constraintType = applySolvedTypeVars(constraintType, templateSolution);
+                            }
+                        }
+
                         if (TypeBase.isInstantiable(subtype)) {
                             constraintType = convertToInstantiable(constraintType);
                         }
@@ -4589,6 +4608,21 @@ export function createTypeEvaluator(
 
                 // Fall back to a bound of "object" if no bound is provided.
                 let boundType = subtype.shared.boundType ?? getObjectType();
+
+                if (subtype.priv.typeArgs && subtype.shared.boundType) {
+                    const template = subtype.shared.boundType;
+                    const templateTypeVars =
+                        subtype.shared.typeParams.length > 0
+                            ? subtype.shared.typeParams
+                            : getTypeVarArgsRecursive(template);
+                    if (templateTypeVars.length > 0 && templateTypeVars.length === subtype.priv.typeArgs.length) {
+                        const templateSolution = new ConstraintSolution();
+                        for (let i = 0; i < templateTypeVars.length; i++) {
+                            templateSolution.setType(templateTypeVars[i], subtype.priv.typeArgs[i]);
+                        }
+                        boundType = applySolvedTypeVars(boundType, templateSolution);
+                    }
+                }
 
                 // If this is a synthesized self/cls type var, self-specialize its type arguments.
                 if (TypeVarType.isSelf(subtype) && isClass(boundType) && !ClassType.isPseudoGenericClass(boundType)) {
@@ -5832,14 +5866,13 @@ export function createTypeEvaluator(
             (flags & EvalFlags.AllowMissingTypeArgs) === 0 &&
             !type.priv.typeArgs
         ) {
-            let arity = type.shared.constructorArity;
-            if (arity === undefined) {
+            if (type.shared.typeParams.length === 0) {
                 if (type.shared.constraints.length > 0) {
                     for (const c of type.shared.constraints) {
                         if (isClassInstance(c) && c.priv.typeArgs) {
                             const freeVars = getTypeVarArgsRecursive(c);
                             if (freeVars.length > 0) {
-                                arity = freeVars.length;
+                                type.shared.typeParams = freeVars;
                                 break;
                             }
                         }
@@ -5851,13 +5884,12 @@ export function createTypeEvaluator(
                 ) {
                     const freeVars = getTypeVarArgsRecursive(type.shared.boundType);
                     if (freeVars.length > 0) {
-                        arity = freeVars.length;
+                        type.shared.typeParams = freeVars;
                     }
                 }
-                type.shared.constructorArity = arity;
             }
 
-            if (arity !== undefined && arity > 0) {
+            if (type.shared.typeParams.length > 0) {
                 addDiagnostic(
                     DiagnosticRule.reportGeneralTypeIssues,
                     LocMessage.typeArgsMissingForClass().format({
@@ -5866,7 +5898,7 @@ export function createTypeEvaluator(
                     node
                 );
 
-                const unknownArgs = Array.from({ length: arity }, () => UnknownType.create());
+                const unknownArgs = type.shared.typeParams.map(() => UnknownType.create());
                 type = TypeVarType.cloneForTypeApplication(type, unknownArgs);
             }
         }
@@ -5894,7 +5926,10 @@ export function createTypeEvaluator(
 
             if (curNode.nodeType === ParseNodeType.Class) {
                 const classTypeInfo = getTypeOfClass(curNode);
-                if (classTypeInfo && !ClassType.isPartiallyEvaluated(classTypeInfo.classType)) {
+                if (
+                    classTypeInfo &&
+                    (!ClassType.isPartiallyEvaluated(classTypeInfo.classType) || curNode.d.typeParams)
+                ) {
                     typeParamsForScope = classTypeInfo.classType.shared.typeParams;
                 }
 
@@ -8131,7 +8166,7 @@ export function createTypeEvaluator(
                         const typeArgs = typeArgsWithNodes.map((typeArg) => convertToInstance(typeArg.type));
 
                         const isExplicitTemplateConstraint = (type: Type) =>
-                            isClassInstance(type) &&
+                            (isTypeVar(type) || isClassInstance(type)) &&
                             (type.shared.typeParams.length === typeArgs.length ||
                                 getTypeVarArgsRecursive(type).length === typeArgs.length) &&
                             type.priv.typeArgs !== undefined &&
@@ -8141,6 +8176,12 @@ export function createTypeEvaluator(
                         if (unexpandedSubtype.shared.constraints.length > 0) {
                             hasExplicitTemplate =
                                 unexpandedSubtype.shared.constraints.every(isExplicitTemplateConstraint);
+                            if (hasExplicitTemplate && unexpandedSubtype.shared.typeParams.length === 0) {
+                                const firstConstraint = unexpandedSubtype.shared.constraints[0];
+                                if (isClassInstance(firstConstraint) && firstConstraint.priv.typeArgs) {
+                                    unexpandedSubtype.shared.typeParams = getTypeVarArgsRecursive(firstConstraint);
+                                }
+                            }
                         } else if (unexpandedSubtype.shared.boundType) {
                             let allBoundsValid = true;
                             doForEachSubtype(unexpandedSubtype.shared.boundType, (boundSubtype) => {
@@ -8149,10 +8190,28 @@ export function createTypeEvaluator(
                                 }
                             });
                             hasExplicitTemplate = allBoundsValid;
+                            if (
+                                hasExplicitTemplate &&
+                                unexpandedSubtype.shared.typeParams.length === 0 &&
+                                isClassInstance(unexpandedSubtype.shared.boundType) &&
+                                unexpandedSubtype.shared.boundType.priv.typeArgs
+                            ) {
+                                unexpandedSubtype.shared.typeParams = getTypeVarArgsRecursive(
+                                    unexpandedSubtype.shared.boundType
+                                );
+                            }
                         }
 
+                        const formalParams = unexpandedSubtype.shared.typeParams;
+                        const expectedArity =
+                            formalParams.length > 0
+                                ? formalParams.length
+                                : hasExplicitTemplate
+                                ? typeArgs.length
+                                : undefined;
+
                         const isValidTypeApplication =
-                            hasExplicitTemplate || unexpandedSubtype.shared.constructorArity === typeArgs.length;
+                            hasExplicitTemplate || (expectedArity !== undefined && expectedArity === typeArgs.length);
 
                         if (!isValidTypeApplication) {
                             addDiagnostic(
@@ -8165,10 +8224,12 @@ export function createTypeEvaluator(
                             return UnknownType.create();
                         }
 
-                        if (unexpandedSubtype.shared.constructorArity === undefined) {
-                            unexpandedSubtype.shared.constructorArity = typeArgs.length;
-                        } else if (typeArgs.length !== unexpandedSubtype.shared.constructorArity) {
-                            const expected = unexpandedSubtype.shared.constructorArity!;
+                        if (unexpandedSubtype.shared.typeParams.length === 0) {
+                            unexpandedSubtype.shared.typeParams = Array.from({ length: typeArgs.length }, (_, i) =>
+                                TypeVarType.createInstance(`T${i}`)
+                            );
+                        } else if (typeArgs.length !== unexpandedSubtype.shared.typeParams.length) {
+                            const expected = unexpandedSubtype.shared.typeParams.length;
                             addDiagnostic(
                                 DiagnosticRule.reportInvalidTypeArguments,
                                 (typeArgs.length > expected
@@ -8200,6 +8261,24 @@ export function createTypeEvaluator(
                         }
 
                         for (let i = 0; i < typeArgs.length; i++) {
+                            if (i < formalParams.length) {
+                                const formalParam = formalParams[i];
+                                if (isTypeVar(formalParam)) {
+                                    const diag = new DiagnosticAddendum();
+                                    const adjusted = applyTypeArgToTypeVar(formalParam, typeArgs[i], diag);
+                                    if (!adjusted) {
+                                        addDiagnostic(
+                                            DiagnosticRule.reportInvalidTypeArguments,
+                                            LocMessage.typeVarAssignmentMismatch().format({
+                                                type: printType(typeArgs[i]),
+                                                name: TypeVarType.getReadableName(formalParam),
+                                            }) + diag.getString(),
+                                            typeArgsWithNodes[i].node
+                                        );
+                                    }
+                                }
+                            }
+
                             for (const template of templates) {
                                 const templateParams = getTypeVarArgsRecursive(template);
                                 if (i < templateParams.length) {
@@ -8868,7 +8947,7 @@ export function createTypeEvaluator(
             if (
                 options?.typeParams &&
                 argIndex < options.typeParams.length &&
-                options.typeParams[argIndex].shared.constructorArity !== undefined
+                TypeVarType.isConstructor(options.typeParams[argIndex])
             ) {
                 effectiveFlags |= EvalFlags.AllowMissingTypeArgs;
             }
@@ -18922,6 +19001,7 @@ export function createTypeEvaluator(
 
             if (node.d.typeParams) {
                 typeParams = evaluateTypeParamList(node.d.typeParams).map((t) => TypeVarType.cloneAsInstance(t));
+                classType.shared.typeParams = typeParams;
             }
 
             // If the class derives from "Generic" directly, it will provide
@@ -24174,10 +24254,10 @@ export function createTypeEvaluator(
         writeTypeCache(node.d.name, { type: typeVar }, /* flags */ undefined);
 
         if (node.d.typeParams) {
-            typeVar.shared.constructorArity = node.d.typeParams.d.params.length;
-            node.d.typeParams.d.params.forEach((param) => {
-                getTypeOfTypeParam(param);
-            });
+            typeVar.shared.typeVarScopeId = ParseTreeUtils.getScopeIdForNode(node.d.typeParams);
+            typeVar.shared.typeParams = evaluateTypeParamList(node.d.typeParams).map((t) =>
+                TypeVarType.cloneAsInstance(t)
+            );
         }
 
         if (node.d.boundExpr) {
@@ -26481,9 +26561,26 @@ export function createTypeEvaluator(
                                         ClassType.isDerivedFrom(mroClass, instantiableCandidate))
                             );
                         if (matchingBase) {
-                            const specializedBase = matchingBase.priv.typeArgs
+                            let specializedBase = matchingBase.priv.typeArgs
                                 ? matchingBase
                                 : specializeForBaseClass(ClassType.cloneAsInstantiable(srcType), matchingBase);
+                            if (candidate.priv.typeArgs && specializedBase.priv.typeArgs) {
+                                const solution = new ConstraintSolution();
+                                for (
+                                    let i = 0;
+                                    i < specializedBase.priv.typeArgs.length && i < candidate.priv.typeArgs.length;
+                                    i++
+                                ) {
+                                    const baseTypeArg = specializedBase.priv.typeArgs[i];
+                                    const candidateTypeArg = candidate.priv.typeArgs[i];
+                                    if (isTypeVar(baseTypeArg) && !isTypeVar(candidateTypeArg)) {
+                                        solution.setType(baseTypeArg, candidateTypeArg);
+                                    }
+                                }
+                                if (!solution.isEmpty()) {
+                                    specializedBase = applySolvedTypeVars(specializedBase, solution) as ClassType;
+                                }
+                            }
                             if (specializedBase.priv.typeArgs) {
                                 effectiveSrcClass = TypeBase.isInstance(srcType)
                                     ? ClassType.cloneAsInstance(specializedBase)
@@ -26625,6 +26722,46 @@ export function createTypeEvaluator(
                 (ClassType.isSameGenericClass(matchedConstraint, constructorTypeForConstraint) ||
                     ClassType.isDerivedFrom(constructorTypeForConstraint, matchedConstraint))
             ) {
+                const expectedParamCount = matchedConstraint.shared.typeParams.length;
+                if (
+                    isClass(originalSrcClass) &&
+                    originalSrcClass.shared.typeParams.length > 0 &&
+                    originalSrcClass.shared.typeParams.length !== expectedParamCount
+                ) {
+                    diag?.addMessage(
+                        LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
+                            name: TypeVarType.getReadableName(constructorTypeVar),
+                            type: printType(srcType),
+                            expected: expectedParamCount,
+                            received: originalSrcClass.shared.typeParams.length,
+                        })
+                    );
+                    if (constructorTypeVar.shared.boundType) {
+                        diag?.addMessage(
+                            LocAddendum.typeVarConstructorBoundContext().format({
+                                name: TypeVarType.getReadableName(constructorTypeVar),
+                                bound: printType(constructorTypeVar.shared.boundType),
+                            })
+                        );
+                    } else if (constructorTypeVar.shared.constraints.length > 0) {
+                        diag?.addMessage(
+                            LocAddendum.typeVarConstructorConstraintContext().format({
+                                name: TypeVarType.getReadableName(constructorTypeVar),
+                                constraints: constructorTypeVar.shared.constraints.map((c) => printType(c)).join(', '),
+                            })
+                        );
+                    }
+                    if (originalSrcClass.shared.typeParams.length > expectedParamCount) {
+                        diag?.addMessage(
+                            LocAddendum.typeVarConstructorCannotPartiallyApply().format({
+                                name: TypeVarType.getReadableName(constructorTypeVar),
+                                type: printType(srcType),
+                            })
+                        );
+                    }
+                    return false;
+                }
+
                 // Specialize the matched constraint template using the applied type arguments
                 // and match it against the source type. E.g. Array[X] <- Array[IntScalar] binds X <- IntScalar.
                 const templateSolution = new ConstraintSolution();
@@ -26635,10 +26772,16 @@ export function createTypeEvaluator(
                 const templateToCheck = TypeBase.isInstantiable(srcType)
                     ? convertToInstantiable(specializedTemplate)
                     : convertToInstance(specializedTemplate);
-                const constraintsForTemplate = srcType.priv.typeArgs ? constraints : undefined;
-                if (
-                    !assignType(templateToCheck, effectiveSrcClass, diag, constraintsForTemplate, flags, recursionCount)
-                ) {
+                const constraintsForTemplate = constraints;
+                const templateAssignSuccess = assignType(
+                    templateToCheck,
+                    effectiveSrcClass,
+                    diag,
+                    constraintsForTemplate,
+                    flags,
+                    recursionCount
+                );
+                if (!templateAssignSuccess) {
                     return false;
                 }
 
@@ -26649,7 +26792,16 @@ export function createTypeEvaluator(
                         const templateArg = matchedConstraint.priv.typeArgs[i];
                         const srcTypeArg = effectiveSrcClass.priv.typeArgs[i];
                         if (isTypeVar(templateArg) && srcTypeArg) {
-                            if (!assignType(templateArg, srcTypeArg, diag, /* constraints */ undefined, flags, recursionCount)) {
+                            if (
+                                !assignType(
+                                    templateArg,
+                                    srcTypeArg,
+                                    diag,
+                                    /* constraints */ undefined,
+                                    flags,
+                                    recursionCount
+                                )
+                            ) {
                                 return false;
                             }
                         }
@@ -30109,23 +30261,61 @@ export function createTypeEvaluator(
             return srcType;
         }
 
-        if (destType.shared.constructorArity !== undefined && !isTypeVar(effectiveSrcType)) {
+        if (TypeVarType.isConstructor(destType) && !isTypeVar(effectiveSrcType)) {
             let isConstructor = false;
+            let typeParamCountMismatch: { expected: number; received: number } | undefined;
             if (isClass(effectiveSrcType)) {
                 const aliasInfo = effectiveSrcType.props?.typeAliasInfo;
-                const arity = aliasInfo?.shared.typeParams
+                const received = aliasInfo?.shared.typeParams
                     ? aliasInfo.shared.typeParams.length
                     : effectiveSrcType.shared.typeParams.length;
-                if (arity === destType.shared.constructorArity) {
+                const expected = destType.shared.typeParams.length;
+                if (received === expected) {
                     isConstructor = true;
+                } else {
+                    typeParamCountMismatch = { expected, received };
                 }
             }
             if (!isConstructor) {
-                diag.addMessage(
-                    LocAddendum.typeNotGenericConstructor().format({
-                        type: printType(effectiveSrcType),
-                    })
-                );
+                if (typeParamCountMismatch) {
+                    diag.addMessage(
+                        LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
+                            name: TypeVarType.getReadableName(destType),
+                            type: printType(effectiveSrcType),
+                            expected: typeParamCountMismatch.expected,
+                            received: typeParamCountMismatch.received,
+                        })
+                    );
+                    if (destType.shared.boundType) {
+                        diag.addMessage(
+                            LocAddendum.typeVarConstructorBoundContext().format({
+                                name: TypeVarType.getReadableName(destType),
+                                bound: printType(destType.shared.boundType),
+                            })
+                        );
+                    } else if (destType.shared.constraints.length > 0) {
+                        diag.addMessage(
+                            LocAddendum.typeVarConstructorConstraintContext().format({
+                                name: TypeVarType.getReadableName(destType),
+                                constraints: destType.shared.constraints.map((c) => printType(c)).join(', '),
+                            })
+                        );
+                    }
+                    if (typeParamCountMismatch.received > typeParamCountMismatch.expected) {
+                        diag.addMessage(
+                            LocAddendum.typeVarConstructorCannotPartiallyApply().format({
+                                name: TypeVarType.getReadableName(destType),
+                                type: printType(effectiveSrcType),
+                            })
+                        );
+                    }
+                } else {
+                    diag.addMessage(
+                        LocAddendum.typeNotGenericConstructor().format({
+                            type: printType(effectiveSrcType),
+                        })
+                    );
+                }
                 return undefined;
             }
         }

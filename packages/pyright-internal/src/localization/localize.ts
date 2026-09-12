@@ -1611,6 +1611,22 @@ export namespace Localizer {
             new ParameterizedString<{ type: string }>(getRawString('DiagnosticAddendum.typeNotClass'));
         export const typeNotGenericConstructor = () =>
             new ParameterizedString<{ type: string }>(getRawString('DiagnosticAddendum.typeNotGenericConstructor'));
+        export const typeVarConstructorTypeParamCountMismatch = () =>
+            new ParameterizedString<{ name: string; type: string; expected: number; received: number }>(
+                getRawString('DiagnosticAddendum.typeVarConstructorTypeParamCountMismatch')
+            );
+        export const typeVarConstructorBoundContext = () =>
+            new ParameterizedString<{ name: string; bound: string }>(
+                getRawString('DiagnosticAddendum.typeVarConstructorBoundContext')
+            );
+        export const typeVarConstructorConstraintContext = () =>
+            new ParameterizedString<{ name: string; constraints: string }>(
+                getRawString('DiagnosticAddendum.typeVarConstructorConstraintContext')
+            );
+        export const typeVarConstructorCannotPartiallyApply = () =>
+            new ParameterizedString<{ name: string; type: string }>(
+                getRawString('DiagnosticAddendum.typeVarConstructorCannotPartiallyApply')
+            );
         export const typeParamSpec = () =>
             new ParameterizedString<{ type: string; name: string }>(getRawString('DiagnosticAddendum.typeParamSpec'));
         export const typeNotStringLiteral = () =>

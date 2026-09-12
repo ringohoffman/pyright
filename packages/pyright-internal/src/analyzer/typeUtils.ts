@@ -3618,6 +3618,21 @@ export class TypeVarTransformer {
 
                 replacementType = this.transformTypeVar(type, recursionCount) ?? type;
 
+                if (isTypeVar(replacementType) && replacementType.priv.typeArgs) {
+                    let requiresUpdate = false;
+                    const typeArgs = replacementType.priv.typeArgs.map((typeArg) => {
+                        const replacementTypeArg = this.apply(typeArg, recursionCount);
+                        if (replacementTypeArg !== typeArg) {
+                            requiresUpdate = true;
+                        }
+                        return replacementTypeArg;
+                    });
+
+                    if (requiresUpdate) {
+                        replacementType = TypeVarType.cloneForTypeApplication(replacementType, typeArgs);
+                    }
+                }
+
                 if (isParamSpec(type) && replacementType !== type) {
                     replacementType = simplifyFunctionToParamSpec(convertTypeToParamSpecValue(replacementType));
                 }
@@ -4395,7 +4410,9 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                                     const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
                                         applySolvedTypeVars(arg, templateSolution)
                                     );
-                                    if (resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length) {
+                                    if (
+                                        resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length
+                                    ) {
                                         resolvedReplacement = ClassType.specialize(
                                             resolvedReplacement,
                                             specializedTemplateArgs,
@@ -4421,6 +4438,15 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                             }
                             resolvedReplacement = applySolvedTypeVars(resolvedReplacement, templateSolution);
                         }
+                    }
+                } else if (isTypeVar(resolvedReplacement)) {
+                    const index = typeVar.shared.typeParams.findIndex(
+                        (p) => p.shared.name === (resolvedReplacement as TypeVarType).shared.name
+                    );
+                    if (index >= 0 && index < appliedTypeArgs.length) {
+                        resolvedReplacement = appliedTypeArgs[index];
+                    } else {
+                        resolvedReplacement = TypeVarType.cloneForTypeApplication(resolvedReplacement, appliedTypeArgs);
                     }
                 }
             }

@@ -179,23 +179,61 @@ export function assignTypeVar(
         return true;
     }
 
-    if (destType.shared.constructorArity !== undefined && !destType.priv.typeArgs) {
+    if (TypeVarType.isConstructor(destType) && !destType.priv.typeArgs) {
         let isConstructor = false;
+        let typeParamCountMismatch: { expected: number; received: number } | undefined;
         if (isClass(srcType)) {
             const aliasInfo = srcType.props?.typeAliasInfo;
-            const arity = aliasInfo?.shared.typeParams
+            const received = aliasInfo?.shared.typeParams
                 ? aliasInfo.shared.typeParams.length
                 : srcType.shared.typeParams.length;
-            if (arity === destType.shared.constructorArity) {
+            const expected = destType.shared.typeParams.length;
+            if (received === expected) {
                 isConstructor = true;
+            } else {
+                typeParamCountMismatch = { expected, received };
             }
         }
         if (!isConstructor && !isAnyOrUnknown(srcType)) {
-            diag?.addMessage(
-                LocAddendum.typeNotGenericConstructor().format({
-                    type: evaluator.printType(srcType),
-                })
-            );
+            if (typeParamCountMismatch) {
+                diag?.addMessage(
+                    LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
+                        name: TypeVarType.getReadableName(destType),
+                        type: evaluator.printType(srcType),
+                        expected: typeParamCountMismatch.expected,
+                        received: typeParamCountMismatch.received,
+                    })
+                );
+                if (destType.shared.boundType) {
+                    diag?.addMessage(
+                        LocAddendum.typeVarConstructorBoundContext().format({
+                            name: TypeVarType.getReadableName(destType),
+                            bound: evaluator.printType(destType.shared.boundType),
+                        })
+                    );
+                } else if (destType.shared.constraints.length > 0) {
+                    diag?.addMessage(
+                        LocAddendum.typeVarConstructorConstraintContext().format({
+                            name: TypeVarType.getReadableName(destType),
+                            constraints: destType.shared.constraints.map((c) => evaluator.printType(c)).join(', '),
+                        })
+                    );
+                }
+                if (typeParamCountMismatch.received > typeParamCountMismatch.expected) {
+                    diag?.addMessage(
+                        LocAddendum.typeVarConstructorCannotPartiallyApply().format({
+                            name: TypeVarType.getReadableName(destType),
+                            type: evaluator.printType(srcType),
+                        })
+                    );
+                }
+            } else {
+                diag?.addMessage(
+                    LocAddendum.typeNotGenericConstructor().format({
+                        type: evaluator.printType(srcType),
+                    })
+                );
+            }
             return false;
         }
     }
@@ -393,9 +431,9 @@ function solveTypeVarRecursive(
             }
 
             // Apply the dependent TypeVar values to the current TypeVar value.
-            // If entry.typeVar is a constructor variable (constructorArity !== undefined),
+            // If entry.typeVar is a constructor variable (isConstructor),
             // its solved value is a constructor template and should preserve its template parameters.
-            if (!dependentSolution.isEmpty() && entry.typeVar.shared.constructorArity === undefined) {
+            if (!dependentSolution.isEmpty() && !TypeVarType.isConstructor(entry.typeVar)) {
                 value = applySolvedTypeVars(value, dependentSolution);
             }
         }
@@ -726,7 +764,7 @@ function assignUnconstrainedTypeVar(
 
     // If the source is a class that is missing type arguments, fill
     // in missing type arguments with Unknown.
-    if ((flags & AssignTypeFlags.AllowUnspecifiedTypeArgs) === 0 && destType.shared.constructorArity === undefined) {
+    if ((flags & AssignTypeFlags.AllowUnspecifiedTypeArgs) === 0 && !TypeVarType.isConstructor(destType)) {
         if (isClass(adjSrcType) && adjSrcType.priv.includeSubclasses) {
             adjSrcType = specializeWithDefaultTypeArgs(adjSrcType);
         }

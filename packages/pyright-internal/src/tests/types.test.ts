@@ -924,6 +924,170 @@ test('TypeApplicationToHktConstructorValidatesTemplateParameterBounds', () => {
     assert.strictEqual(validateHktTypeArg(fTypeVar, 0, ClassType.cloneAsInstance(notScalarClass)), false);
 });
 
+test('TypeApplicationToHktConstructorValidatesTemplateParameterBoundsNoTemplate', () => {
+    const scalarClass = ClassType.createInstantiable(
+        'Scalar',
+        'test.Scalar',
+        'test',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+
+    const intScalarClass = ClassType.createInstantiable(
+        'IntScalar',
+        'test.IntScalar',
+        'test',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+    intScalarClass.shared.baseClasses.push(scalarClass);
+    intScalarClass.shared.mro.push(intScalarClass);
+    intScalarClass.shared.mro.push(scalarClass);
+
+    const notScalarClass = ClassType.createInstantiable(
+        'NotScalar',
+        'test.NotScalar',
+        'test',
+        Uri.empty(),
+        ClassTypeFlags.None,
+        0,
+        undefined,
+        undefined
+    );
+
+    // S has bound Scalar
+    const sTypeVar = TypeVarType.createInstance('S');
+    sTypeVar.shared.boundType = ClassType.cloneAsInstance(scalarClass);
+
+    // Pure PEP 695 HKT: F[S: Scalar]
+    const fTypeVar = TypeVarType.createInstance('F');
+    fTypeVar.shared.typeParams = [sTypeVar];
+
+    // Helper that checks if a type argument is valid for F's formal type parameter S at declaration time
+    function validateHktTypeArg(typeVar: TypeVarType, argIndex: number, argType: Type): boolean {
+        const formalParams = typeVar.shared.typeParams;
+        if (argIndex >= formalParams.length) {
+            return false;
+        }
+        const param = formalParams[argIndex];
+        if (param.shared.boundType && isClassInstance(param.shared.boundType)) {
+            if (isClassInstance(argType)) {
+                return ClassType.isDerivedFrom(argType, param.shared.boundType);
+            } else if (isTypeVar(argType)) {
+                // An unconstrained TypeVar X (bound is undefined / object) does NOT satisfy S's bound Scalar
+                if (!argType.shared.boundType || !isClassInstance(argType.shared.boundType)) {
+                    return false;
+                }
+                return ClassType.isDerivedFrom(argType.shared.boundType, param.shared.boundType);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    // 1. Unconstrained X (e.g. def preserve[S: Scalar, F[S: Scalar], X](value: F[X]))
+    // X has no bound (bound is object), so F[X] must be REJECTED at declaration time!
+    const unconstrainedX = TypeVarType.createInstance('X');
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, unconstrainedX), false);
+
+    // 2. Bound X: Scalar (e.g. def preserve[S: Scalar, F[S: Scalar], X: Scalar](value: F[X]))
+    // X has bound Scalar, so F[X] is ACCEPTED!
+    const boundedX = TypeVarType.createInstance('X');
+    boundedX.shared.boundType = ClassType.cloneAsInstance(scalarClass);
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, boundedX), true);
+
+    // 3. Concrete IntScalar (satisfies S: Scalar) -> ACCEPTED
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, ClassType.cloneAsInstance(intScalarClass)), true);
+
+    // 4. Concrete NotScalar (does not satisfy S: Scalar) -> REJECTED
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, ClassType.cloneAsInstance(notScalarClass)), false);
+});
+
+test('UnconstrainedHktTypeVarAcceptsAnyTypeArgAndSpecializes', () => {
+    // Tests unconstrained HKT type constructor F[T] where T has no bound/constraints.
+    const tTypeVar = TypeVarType.createInstance('T');
+    const fTypeVar = TypeVarType.createInstance('F');
+    fTypeVar.shared.typeParams = [tTypeVar];
+
+    // 1. Must be recognized as constructor with 1 formal type parameter
+    assert.strictEqual(TypeVarType.isConstructor(fTypeVar), true);
+    assert.strictEqual(fTypeVar.shared.typeParams.length, 1);
+
+    // 2. Unconstrained T accepts any type argument at declaration time
+    const intClass = ClassType.createInstantiable(
+        'int',
+        'builtins.int',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+    const strClass = ClassType.createInstantiable(
+        'str',
+        'builtins.str',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+    const unconstrainedX = TypeVarType.createInstance('X');
+
+    // Helper that checks if a type argument is valid for F's formal type parameter T at declaration time
+    function validateHktTypeArg(typeVar: TypeVarType, argIndex: number, argType: Type): boolean {
+        const formalParams = typeVar.shared.typeParams;
+        if (argIndex >= formalParams.length) {
+            return false;
+        }
+        const param = formalParams[argIndex];
+        if (param.shared.boundType && isClassInstance(param.shared.boundType)) {
+            if (isClassInstance(argType)) {
+                return ClassType.isDerivedFrom(argType, param.shared.boundType);
+            } else if (isTypeVar(argType)) {
+                if (!argType.shared.boundType || !isClassInstance(argType.shared.boundType)) {
+                    return false;
+                }
+                return ClassType.isDerivedFrom(argType.shared.boundType, param.shared.boundType);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, ClassType.cloneAsInstance(intClass)), true);
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, ClassType.cloneAsInstance(strClass)), true);
+    assert.strictEqual(validateHktTypeArg(fTypeVar, 0, unconstrainedX), true);
+
+    // 3. Solving F to a generic class (e.g. list) and substituting F[str] yields list[str]
+    const listClass = ClassType.createInstantiable(
+        'list',
+        'builtins.list',
+        'builtins',
+        Uri.empty(),
+        ClassTypeFlags.BuiltIn,
+        0,
+        undefined,
+        undefined
+    );
+    listClass.shared.typeParams.push(TypeVarType.createInstance('_T'));
+
+    const appliedFStr = TypeVarType.cloneForTypeApplication(fTypeVar, [ClassType.cloneAsInstance(strClass)]);
+    const solution = new ConstraintSolution();
+    solution.setType(fTypeVar, ClassType.cloneAsInstance(listClass));
+
+    const specialized = applySolvedTypeVars(appliedFStr, solution);
+    assert.strictEqual(printType(specialized, PrintTypeFlags.None, returnTypeCallback), 'list[str]');
+});
+
 test('MethodTypeVarBoundCanReferenceEnclosingClassTypeParam', () => {
     // Generic enclosing class BaseField[GT]
     const classScopeId = 'class.BaseField';
@@ -1962,9 +2126,9 @@ test('DiagnosticCheckForPartiallyAppliedConstructorTemplateBound', () => {
     //    TypeVar with bound `_dict2[_T, Any]` must be recognized as subscriptable with 1 type argument:
     const dictTVar = TypeVarType.createInstance('DictT');
     dictTVar.shared.boundType = partiallyAppliedBound;
-    dictTVar.shared.constructorArity = 1;
+    dictTVar.shared.typeParams = [TypeVarType.createInstance('_T')];
 
-    assert.strictEqual(dictTVar.shared.constructorArity, 1);
+    assert.strictEqual(dictTVar.shared.typeParams.length, 1);
 });
 
 test('Level1_TemplateBoundValidation_AllowsGenericConstructorTemplates', () => {
@@ -2640,7 +2804,7 @@ test('HigherKindedType24_UnsolvedHigherKindedTypeVarReplacedWithUnknownWithoutLe
     mongoModelTVar.priv.scopeId = functionScopeId;
     mongoModelTVar.priv.scopeName = 'find_one';
     mongoModelTVar.priv.scopeType = TypeVarScopeType.Function;
-    mongoModelTVar.shared.constructorArity = 1;
+    mongoModelTVar.shared.typeParams = [idtTypeVar];
 
     const returnTypeVar = TypeVarType.cloneForTypeApplication(mongoModelTVar, [idtTypeVar]);
 
@@ -2701,7 +2865,7 @@ test('HigherKindedType9_BareConstructorUsageMissingTypeArgsDiagnostic', () => {
             }
         } else if (isTypeVar(type)) {
             const hasConstructorTemplates =
-                type.shared.constructorArity !== undefined ||
+                TypeVarType.isConstructor(type) ||
                 type.shared.constraints.some(
                     (c) => isClassInstance(c) && !!c.priv.typeArgs && getTypeVarArgsRecursive(c).length > 0
                 ) ||
@@ -2738,9 +2902,9 @@ test('HigherKindedType9_BareConstructorUsageMissingTypeArgsDiagnostic', () => {
     assert.strictEqual(classCheck.requiresMissingTypeArgsError, true);
     assert.strictEqual(classCheck.synthesizedDefault, 'Box[Unknown]');
 
-    // 2. HKT TypeVar Mixed (constructorArity = 1) used bare in `value: Mixed`:
+    // 2. HKT TypeVar Mixed (constructor with typeParams length 1) used bare in `value: Mixed`:
     const mixedTypeVar = TypeVarType.createInstance('Mixed');
-    mixedTypeVar.shared.constructorArity = 1;
+    mixedTypeVar.shared.typeParams = [TypeVarType.createInstance('T')];
 
     const bareTypeVarCheck = checkMissingTypeArgsForType(mixedTypeVar, /* isTypeAnnotationContext */ true);
     assert.strictEqual(bareTypeVarCheck.requiresMissingTypeArgsError, true);
@@ -2860,7 +3024,7 @@ test('HigherKindedType_NestedTemplateParamValidationRejectsDoubleWrapping', () =
 
     const arrayT = TypeVarType.createInstance('ArrayT');
     arrayT.shared.constraints = [arrayTemplate];
-    arrayT.shared.constructorArity = 1;
+    arrayT.shared.typeParams = [dataTypeT];
 
     // Helper simulating evaluator's template parameter validation and diagnostic generation
     function validateAndApplyHktTypeArgs(
@@ -2989,10 +3153,10 @@ test('HigherKindedType_CollectionTypeGuardNarrowingWithAppliedConstructor', () =
 
     const collectionTemplate = ClassType.specialize(ClassType.cloneAsInstance(collectionClass), [vTypeVar]);
 
-    // 2. Create CollectionT HKT TypeVar with bound Collection[V] and constructorArity = 1
+    // 2. Create CollectionT HKT TypeVar with bound Collection[V] and typeParams = [V]
     const collectionTVar = TypeVarType.createInstance('CollectionT');
     collectionTVar.shared.boundType = collectionTemplate;
-    collectionTVar.shared.constructorArity = 1;
+    collectionTVar.shared.typeParams = [vTypeVar];
 
     // 3. Create list[Any] argument type and int type
     const listClass = ClassType.createInstantiable(
@@ -3089,7 +3253,7 @@ test('HigherKindedType_TypeVarDefault_ScopedTemplateParamValidation', () => {
     );
 
     const wrapperT = TypeVarType.createInstance('WrapperT');
-    wrapperT.shared.constructorArity = 1;
+    wrapperT.shared.typeParams = [tTypeVar];
     wrapperT.shared.isDefaultExplicit = true;
     wrapperT.shared.defaultType = identityAlias;
 
@@ -3154,7 +3318,7 @@ test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
     );
 
     const wrapperT = TypeVarType.createInstance('WrapperT');
-    wrapperT.shared.constructorArity = 1;
+    wrapperT.shared.typeParams = [tTypeVar];
 
     // The default constructor value: the unspecialized Identity constructor,
     // which reduces to its nested type variable T (the alias is transparent).
@@ -3181,6 +3345,7 @@ test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
             `TypeVar replacements, so the result leaks as "${printedType}"`
     );
 });
+
 test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
     // Specifically tests why:
     // reveal_type(A().foo(), expected_text="int") -> expected "int" but received "T@WrapperT"
@@ -3214,7 +3379,7 @@ test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
     );
 
     const wrapperT = TypeVarType.createInstance('WrapperT');
-    wrapperT.shared.constructorArity = 1;
+    wrapperT.shared.typeParams = [tTypeVar];
     wrapperT.shared.isDefaultExplicit = true;
     wrapperT.shared.defaultType = identityAlias;
 
@@ -3235,4 +3400,3 @@ test('HigherKindedType_TypeVarDefault_IdentityAliasApplicationLeak', () => {
         'Specialization succeeds: applySolvedTypeVars returns specialized Identity[int] rather than unspecialized T@WrapperT'
     );
 });
-

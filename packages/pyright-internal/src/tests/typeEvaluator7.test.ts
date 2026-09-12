@@ -566,6 +566,15 @@ test('HigherKindedType29', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('HigherKindedType30', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_13;
+    configOptions.diagnosticRuleSet.reportMissingTypeArgument = 'error';
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType30.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 

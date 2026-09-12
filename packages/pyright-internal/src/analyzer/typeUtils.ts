@@ -2134,7 +2134,17 @@ export function getTypeVarArgsRecursive(type: Type, recursionCount = 0): TypeVar
         const combinedList: TypeVarType[] = [];
         const typeArgs = type.priv.tupleTypeArgs ? type.priv.tupleTypeArgs.map((e) => e.type) : type.priv.typeArgs;
         if (typeArgs) {
-            typeArgs.forEach((typeArg) => {
+            typeArgs.forEach((typeArg, index) => {
+                const typeParam = index < type.shared.typeParams.length ? type.shared.typeParams[index] : undefined;
+                if (typeParam && TypeVarType.isConstructor(typeParam)) {
+                    const aliasInfo = typeArg.props?.typeAliasInfo;
+                    if (aliasInfo && !aliasInfo.typeArgs) {
+                        return;
+                    }
+                    if (isClass(typeArg) && !typeArg.priv.typeArgs) {
+                        return;
+                    }
+                }
                 addTypeVarsToListIfUnique(combinedList, getTypeVarArgsRecursive(typeArg, recursionCount));
             });
         }

@@ -14588,7 +14588,10 @@ export function createTypeEvaluator(
         );
 
         if (typeVar.shared.boundType) {
-            if (!assignType(typeVar.shared.boundType, concreteDefaultType)) {
+            const isCompatible = TypeVarType.isConstructor(typeVar)
+                ? applyTypeArgToTypeVar(typeVar, concreteDefaultType, new DiagnosticAddendum()) !== undefined
+                : assignType(typeVar.shared.boundType, concreteDefaultType);
+            if (!isCompatible) {
                 addDiagnostic(
                     DiagnosticRule.reportGeneralTypeIssues,
                     LocMessage.typeVarDefaultBoundMismatch(),
@@ -23378,6 +23381,10 @@ export function createTypeEvaluator(
             flags |= EvalFlags.EnforceClassTypeVarScope;
         }
 
+        if (options?.allowMissingTypeArgs) {
+            flags |= EvalFlags.AllowMissingTypeArgs;
+        }
+
         const fileInfo = AnalyzerNodeInfo.getFileInfo(node);
         if ((isAnnotationEvaluationPostponed(fileInfo) || options?.forwardRefs) && !options?.runtimeTypeExpression) {
             flags |= EvalFlags.ForwardRefs;
@@ -24223,6 +24230,61 @@ export function createTypeEvaluator(
         }
     }
 
+    function etaReduceConstructorDefault(
+        typeVar: TypeVarType,
+        defaultType: Type,
+        defaultExpr: ExpressionNode | undefined
+    ): Type {
+        const formalParams = typeVar.shared.typeParams;
+        if (formalParams.length === 0) {
+            return defaultType;
+        }
+
+        if (defaultExpr && defaultExpr.nodeType === ParseNodeType.Index) {
+            const leftTypeResult = getTypeOfExpressionExpectingType(defaultExpr.d.leftExpr, {
+                forwardRefs: true,
+                typeExpression: true,
+                allowMissingTypeArgs: true,
+            });
+            const leftType = convertToInstance(leftTypeResult.type);
+            const aliasInfo = leftType.props?.typeAliasInfo;
+            if (aliasInfo?.shared.typeParams && aliasInfo.shared.typeParams.length === formalParams.length) {
+                return leftType;
+            }
+            if (isClass(leftType) && leftType.shared.typeParams.length === formalParams.length) {
+                return ClassType.specialize(leftType, undefined);
+            }
+        }
+
+        const aliasInfo = defaultType.props?.typeAliasInfo;
+        if (aliasInfo?.typeArgs && aliasInfo.typeArgs.length === formalParams.length) {
+            const matches = aliasInfo.typeArgs.every(
+                (arg, index) => isTypeVar(arg) && isTypeSame(arg, formalParams[index], { ignoreConditions: true })
+            );
+            if (matches) {
+                return TypeBase.cloneForTypeAlias(defaultType, {
+                    ...aliasInfo,
+                    typeArgs: undefined,
+                });
+            }
+        }
+
+        if (
+            isClass(defaultType) &&
+            defaultType.priv.typeArgs &&
+            defaultType.priv.typeArgs.length === formalParams.length
+        ) {
+            const matches = defaultType.priv.typeArgs.every(
+                (arg, index) => isTypeVar(arg) && isTypeSame(arg, formalParams[index], { ignoreConditions: true })
+            );
+            if (matches) {
+                return ClassType.specialize(defaultType, undefined);
+            }
+        }
+
+        return defaultType;
+    }
+
     function getTypeOfTypeParam(node: TypeParameterNode): TypeVarType {
         // Is this type already cached?
         const cachedTypeVarType = readTypeCache(node.d.name, EvalFlags.None) as FunctionType;
@@ -24344,14 +24406,20 @@ export function createTypeEvaluator(
                 ]);
             }
         } else {
-            const defaultType = node.d.defaultExpr
+            const isConstructorTypeVar = TypeVarType.isConstructor(typeVar);
+            let defaultType = node.d.defaultExpr
                 ? convertToInstance(
                       getTypeOfExpressionExpectingType(node.d.defaultExpr, {
                           forwardRefs: true,
                           typeExpression: true,
+                          allowMissingTypeArgs: isConstructorTypeVar,
                       }).type
                   )
                 : undefined;
+
+            if (defaultType && isConstructorTypeVar) {
+                defaultType = etaReduceConstructorDefault(typeVar, defaultType, node.d.defaultExpr);
+            }
 
             if (defaultType) {
                 typeVar.shared.defaultType = defaultType;

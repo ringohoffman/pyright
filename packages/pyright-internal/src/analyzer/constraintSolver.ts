@@ -768,6 +768,8 @@ function assignUnconstrainedTypeVar(
         if (isClass(adjSrcType) && adjSrcType.priv.includeSubclasses) {
             adjSrcType = specializeWithDefaultTypeArgs(adjSrcType);
         }
+    } else if (TypeVarType.isConstructor(destType) && isClass(adjSrcType) && !destType.priv.typeArgs) {
+        adjSrcType = ClassType.specialize(adjSrcType, undefined);
     }
 
     if (TypeBase.isInstantiable(destType)) {

@@ -395,6 +395,7 @@ interface GetTypeArgsOptions {
     isClassVarAnnotation?: boolean;
     supportsTypedDictTypeArg?: boolean;
     typeParams?: TypeVarType[];
+    isTypeClass?: boolean;
 }
 
 interface MatchArgsToParamsResult {
@@ -8417,6 +8418,10 @@ export function createTypeEvaluator(
                     const supportsTypedDictTypeArg =
                         AnalyzerNodeInfo.getFileInfo(node).diagnosticRuleSet.enableExperimentalFeatures &&
                         ClassType.isBuiltIn(concreteSubtype, 'TypedDict');
+                    const isTypeClass =
+                        isInstantiableClass(concreteSubtype) &&
+                        (ClassType.isBuiltIn(concreteSubtype, 'type') ||
+                            ClassType.isSpecialBuiltIn(concreteSubtype, 'Type'));
 
                     let typeArgs = getTypeArgs(node, flags, {
                         isAnnotatedClass,
@@ -8424,6 +8429,7 @@ export function createTypeEvaluator(
                         isFinalAnnotation,
                         isClassVarAnnotation,
                         supportsTypedDictTypeArg,
+                        isTypeClass,
                         typeParams: isInstantiableClass(concreteSubtype)
                             ? concreteSubtype.shared.typeParams
                             : undefined,
@@ -8945,9 +8951,10 @@ export function createTypeEvaluator(
             let typeResult: TypeResultWithNode;
             let effectiveFlags = adjFlags;
             if (
-                options?.typeParams &&
-                argIndex < options.typeParams.length &&
-                TypeVarType.isConstructor(options.typeParams[argIndex])
+                (options?.typeParams &&
+                    argIndex < options.typeParams.length &&
+                    TypeVarType.isConstructor(options.typeParams[argIndex])) ||
+                options?.isTypeClass
             ) {
                 effectiveFlags |= EvalFlags.AllowMissingTypeArgs;
             }

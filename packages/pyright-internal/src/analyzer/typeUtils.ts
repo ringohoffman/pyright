@@ -1632,6 +1632,14 @@ export function validateTypeVarDefault(
     // If there is no default type or the default type is concrete, there's
     // no need to do any more work here.
     if (typeVar.shared.isDefaultExplicit && requiresSpecialization(typeVar.shared.defaultType)) {
+        if (TypeVarType.isConstructor(typeVar)) {
+            // For a type constructor, the default type may be an unapplied generic class (e.g. Greenlet).
+            // Its own type parameters are not out-of-scope type variables.
+            const defaultType = typeVar.shared.defaultType;
+            if (isClass(defaultType) && !defaultType.priv.typeArgs) {
+                return;
+            }
+        }
         const validator = new TypeVarDefaultValidator(liveTypeParams, invalidTypeVars);
         validator.apply(typeVar.shared.defaultType, 0);
     }
@@ -2710,7 +2718,12 @@ export function isPartlyUnknown(type: Type, recursionCount = 0): boolean {
         if (!ClassType.isPseudoGenericClass(type)) {
             const typeArgs = type.priv.tupleTypeArgs?.map((t) => t.type) || type.priv.typeArgs;
             if (typeArgs) {
-                for (const argType of typeArgs) {
+                for (let index = 0; index < typeArgs.length; index++) {
+                    const typeParam = index < type.shared.typeParams.length ? type.shared.typeParams[index] : undefined;
+                    if (typeParam && TypeVarType.isConstructor(typeParam)) {
+                        continue;
+                    }
+                    const argType = typeArgs[index];
                     if (isPartlyUnknown(argType, recursionCount)) {
                         return true;
                     }
@@ -4490,7 +4503,11 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                             subtype = ClassType.cloneAsInstance(ClassType.cloneAsInstantiable(subtype));
                         }
 
-                        if (subtype.shared.typeParams && !subtype.priv.typeArgs) {
+                        if (
+                            subtype.shared.typeParams &&
+                            !subtype.priv.typeArgs &&
+                            !TypeVarType.isConstructor(typeVar)
+                        ) {
                             if (this._options.replaceUnsolved) {
                                 return this._options.replaceUnsolved.useUnknown
                                     ? specializeWithUnknownTypeArgs(

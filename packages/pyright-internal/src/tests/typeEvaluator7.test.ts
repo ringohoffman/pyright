@@ -901,6 +901,12 @@ test('Protocol53', () => {
     TestUtils.validateResults(analysisResults2, 8);
 });
 
+test('Protocol54', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol54.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('ProtocolExplicit1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocolExplicit1.py']);
 
@@ -1120,6 +1126,12 @@ test('TypedDictInline1', () => {
 
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typedDictInline1.py'], configOptions);
     TestUtils.validateResults(analysisResults, 6);
+});
+
+test('TypedDict30', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['typedDict30.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('ClassVar1', () => {

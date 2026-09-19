@@ -61,6 +61,7 @@ import {
     isEffectivelyInstantiable,
     isLiteralTypeOrUnion,
     isPartlyUnknown,
+    isSentinelLiteral,
     isTupleClass,
     makePacked,
     makeUnpacked,
@@ -628,10 +629,22 @@ export function addConstraintsForExpectedType(
     return false;
 }
 
+// Sentinels identify singleton types, so widening a TypeVar must preserve them.
+function stripLiteralsForInference(evaluator: TypeEvaluator, type: Type): Type {
+    // Preserve stripLiteralValue's fast path for unions that don't contain sentinels.
+    if (isUnion(type) && !type.priv.subtypes.some(isSentinelLiteral)) {
+        return stripTypeForm(evaluator.stripLiteralValue(type));
+    }
+
+    return stripTypeForm(
+        mapSubtypes(type, (subtype) => (isSentinelLiteral(subtype) ? subtype : evaluator.stripLiteralValue(subtype)))
+    );
+}
+
 function stripLiteralsForLowerBound(evaluator: TypeEvaluator, typeVar: TypeVarType, lowerBound: Type) {
     return isTypeVarTuple(typeVar)
         ? stripLiteralValueForUnpackedTuple(evaluator, lowerBound)
-        : stripTypeForm(evaluator.stripLiteralValue(lowerBound));
+        : stripLiteralsForInference(evaluator, lowerBound);
 }
 
 function getTypeVarType(
@@ -1561,7 +1574,7 @@ function stripLiteralValueForUnpackedTuple(evaluator: TypeEvaluator, type: Type)
 
     let strippedLiteral = false;
     const tupleTypeArgs: TupleTypeArg[] = type.priv.tupleTypeArgs.map((arg) => {
-        const strippedType = stripTypeForm(evaluator.stripLiteralValue(arg.type));
+        const strippedType = stripLiteralsForInference(evaluator, arg.type);
 
         if (strippedType !== arg.type) {
             strippedLiteral = true;

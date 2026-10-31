@@ -408,7 +408,7 @@ export interface ExpectedTypeOptions {
     runtimeTypeExpression?: boolean;
     convertEllipsisToAny?: boolean;
     allowEllipsis?: boolean;
-    allowMissingTypeArgs?: boolean;
+    noSpecialize?: boolean;
 }
 
 export interface ExpectedTypeResult {

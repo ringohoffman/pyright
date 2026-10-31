@@ -2899,69 +2899,6 @@ export function specializeTupleClass(
     return clonedClassType;
 }
 
-export function specializeMappedConstructor(constructor: Type, typeArg: Type): Type | undefined {
-    if (isInstantiableClass(constructor) && constructor.shared.typeParams.length === 1) {
-        return ClassType.cloneAsInstance(ClassType.specialize(constructor, [typeArg]));
-    }
-
-    const aliasInfo = constructor.props?.typeAliasInfo;
-    if (aliasInfo?.shared.typeParams?.length === 1) {
-        const solution = new ConstraintSolution();
-        solution.setType(aliasInfo.shared.typeParams[0], typeArg);
-        const specializedType = applySolvedTypeVars(constructor, solution);
-        return TypeBase.cloneForTypeAlias(specializedType, { ...aliasInfo, typeArgs: [typeArg] });
-    }
-
-    return undefined;
-}
-
-export function getMappedConstructorTypeArg(constructor: Type, specializedType: Type): Type | undefined {
-    if (
-        isInstantiableClass(constructor) &&
-        isClassInstance(specializedType) &&
-        ClassType.isSameGenericClass(constructor, specializedType) &&
-        specializedType.priv.typeArgs?.length === 1
-    ) {
-        return specializedType.priv.typeArgs[0];
-    }
-
-    if (isInstantiableClass(constructor) && isClassInstance(specializedType)) {
-        const matchingBase = specializedType.shared.mro.find(
-            (mroClass): mroClass is ClassType =>
-                isInstantiableClass(mroClass) && ClassType.isSameGenericClass(mroClass, constructor)
-        );
-        if (matchingBase) {
-            const specializedBase = specializeForBaseClass(
-                ClassType.cloneAsInstantiable(specializedType),
-                matchingBase
-            );
-            if (specializedBase.priv.typeArgs?.length === 1) {
-                return specializedBase.priv.typeArgs[0];
-            }
-        }
-    }
-
-    const constructorAlias = constructor.props?.typeAliasInfo;
-    const specializedAlias = specializedType.props?.typeAliasInfo;
-    if (
-        constructorAlias &&
-        specializedAlias &&
-        constructorAlias.shared === specializedAlias.shared &&
-        specializedAlias.typeArgs?.length === 1
-    ) {
-        return specializedAlias.typeArgs[0];
-    }
-
-    return undefined;
-}
-
-function stripMappedPackLiteral(type: Type): Type {
-    if (isClassInstance(type) && type.priv.literalValue !== undefined) {
-        return ClassType.cloneWithLiteral(type, /* value */ undefined);
-    }
-    return type;
-}
-
 function _expandUnpackedTypeVarTupleUnion(type: Type) {
     if (isClassInstance(type) && isTupleClass(type) && type.priv.tupleTypeArgs && type.priv.isUnpacked) {
         return combineTypes(type.priv.tupleTypeArgs.map((t) => t.type));
@@ -4544,59 +4481,6 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
             // No more processing is needed for ParamSpecs.
             if (isParamSpec(typeVar)) {
                 return replacement;
-            }
-
-            if (
-                isTypeVarTuple(typeVar) &&
-                typeVar.priv.mappedConstructor &&
-                isClassInstance(resolvedReplacement) &&
-                isTupleClass(resolvedReplacement) &&
-                resolvedReplacement.priv.tupleTypeArgs
-            ) {
-                let mappedTypeArgs: TupleTypeArg[];
-                if (
-                    typeVar.shared.requiresTupleMapTranspose &&
-                    isInstantiableClass(typeVar.priv.mappedConstructor) &&
-                    isTupleClass(typeVar.priv.mappedConstructor)
-                ) {
-                    const rows = resolvedReplacement.priv.tupleTypeArgs;
-                    const rowWidth =
-                        rows.length > 0 && isClassInstance(rows[0].type) && rows[0].type.priv.tupleTypeArgs
-                            ? rows[0].type.priv.tupleTypeArgs.length
-                            : 0;
-                    mappedTypeArgs = [];
-                    for (let column = 0; column < rowWidth; column++) {
-                        const columnTypeArgs: TupleTypeArg[] = rows.map((row) => {
-                            const rowTypeArgs = isClassInstance(row.type) ? row.type.priv.tupleTypeArgs : undefined;
-                            return {
-                                type: rowTypeArgs
-                                    ? stripMappedPackLiteral(rowTypeArgs[column].type)
-                                    : UnknownType.create(),
-                                isUnbounded: false,
-                            };
-                        });
-                        mappedTypeArgs.push({
-                            type: ClassType.cloneAsInstance(
-                                specializeTupleClass(typeVar.priv.mappedConstructor, columnTypeArgs)
-                            ),
-                            isUnbounded: false,
-                        });
-                    }
-                } else {
-                    mappedTypeArgs = resolvedReplacement.priv.tupleTypeArgs.map((typeArg) => ({
-                        type:
-                            specializeMappedConstructor(typeVar.priv.mappedConstructor!, typeArg.type) ??
-                            UnknownType.create(),
-                        isUnbounded: typeArg.isUnbounded,
-                        isOptional: typeArg.isOptional,
-                    }));
-                }
-                return specializeTupleClass(
-                    resolvedReplacement,
-                    mappedTypeArgs,
-                    /* isTypeArgExplicit */ true,
-                    typeVar.priv.isUnpacked
-                );
             }
 
             // Preserve the selected higher-kinded constructor family when the solved

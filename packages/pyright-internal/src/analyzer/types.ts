@@ -2854,7 +2854,9 @@ export interface TypeVarDetailsShared {
     name: string;
     constraints: Type[];
     boundType: Type | undefined;
-    requiresTupleMapTranspose: boolean;
+
+    // Inner type parameters when this TypeVar is a type constructor (e.g. `F[T]`).
+    // Empty for an ordinary TypeVar.
     typeParams: TypeVarType[];
     typeVarScopeId?: TypeVarScopeId | undefined;
     isDefaultExplicit: boolean;
@@ -2956,9 +2958,6 @@ export interface TypeVarTupleDetailsPriv extends TypeVarDetailsPriv {
     isInUnion?: boolean | undefined;
 
     freeTypeVar?: TypeVarTupleType | undefined;
-
-    // Unary constructor applied elementwise when this TypeVarTuple is solved.
-    mappedConstructor?: Type | undefined;
 }
 
 export interface TypeVarTupleType extends TypeVarType {
@@ -3027,12 +3026,6 @@ export namespace TypeVarType {
     export function cloneForTypeApplication(type: TypeVarType, typeArgs: Type[] | undefined): TypeVarType {
         const newInstance = TypeBase.cloneType(type);
         newInstance.priv.typeArgs = typeArgs;
-        return newInstance;
-    }
-
-    export function cloneForMappedTypeVarTuple(type: TypeVarTupleType, constructor: Type): TypeVarTupleType {
-        const newInstance = TypeBase.cloneType(type);
-        newInstance.priv.mappedConstructor = constructor;
         return newInstance;
     }
 
@@ -3212,7 +3205,6 @@ export namespace TypeVarType {
                 boundType: undefined,
                 typeParams: [],
                 typeVarScopeId: undefined,
-                requiresTupleMapTranspose: false,
                 isDefaultExplicit: false,
                 defaultType: UnknownType.create(),
                 declaredVariance: Variance.Invariant,

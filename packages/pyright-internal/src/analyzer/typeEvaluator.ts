@@ -396,7 +396,6 @@ interface GetTypeArgsOptions {
     isClassVarAnnotation?: boolean;
     supportsTypedDictTypeArg?: boolean;
     typeParams?: TypeVarType[];
-    isTypeClass?: boolean;
 }
 
 interface MatchArgsToParamsResult {
@@ -5890,58 +5889,33 @@ export function createTypeEvaluator(
                 }
             }
 
-            if (!type.priv.typeArgs && (flags & EvalFlags.AllowMissingTypeArgs) === 0) {
+            if (!type.priv.typeArgs) {
                 type = createSpecializedClassType(type, /* typeArgs */ undefined, flags, node)?.type;
             }
         }
 
         // Is this a generic type alias that needs to be specialized?
-        if ((flags & EvalFlags.InstantiableType) !== 0 && (flags & EvalFlags.AllowMissingTypeArgs) === 0) {
+        if ((flags & EvalFlags.InstantiableType) !== 0) {
             type = specializeTypeAliasWithDefaults(type, node);
         }
 
-        // Is this an HKT constructor TypeVar used bare without type arguments?
+        // Is this a type constructor TypeVar used bare without type arguments?
         if (
             isTypeVar(type) &&
+            TypeVarType.isConstructor(type) &&
             (flags & EvalFlags.InstantiableType) !== 0 &&
-            (flags & EvalFlags.AllowMissingTypeArgs) === 0 &&
             !type.priv.typeArgs
         ) {
-            if (type.shared.typeParams.length === 0) {
-                if (type.shared.constraints.length > 0) {
-                    for (const c of type.shared.constraints) {
-                        if (isClassInstance(c) && c.priv.typeArgs) {
-                            const freeVars = getTypeVarArgsRecursive(c);
-                            if (freeVars.length > 0) {
-                                type.shared.typeParams = freeVars;
-                                break;
-                            }
-                        }
-                    }
-                } else if (
-                    type.shared.boundType &&
-                    isClassInstance(type.shared.boundType) &&
-                    type.shared.boundType.priv.typeArgs
-                ) {
-                    const freeVars = getTypeVarArgsRecursive(type.shared.boundType);
-                    if (freeVars.length > 0) {
-                        type.shared.typeParams = freeVars;
-                    }
-                }
-            }
+            addDiagnostic(
+                DiagnosticRule.reportGeneralTypeIssues,
+                LocMessage.typeArgsMissingForClass().format({
+                    name: type.shared.name,
+                }),
+                node
+            );
 
-            if (type.shared.typeParams.length > 0) {
-                addDiagnostic(
-                    DiagnosticRule.reportGeneralTypeIssues,
-                    LocMessage.typeArgsMissingForClass().format({
-                        name: type.shared.name,
-                    }),
-                    node
-                );
-
-                const unknownArgs = type.shared.typeParams.map(() => UnknownType.create());
-                type = TypeVarType.cloneForTypeApplication(type, unknownArgs);
-            }
+            const unknownArgs = type.shared.typeParams.map(() => UnknownType.create());
+            type = TypeVarType.cloneForTypeApplication(type, unknownArgs);
         }
 
         return type;
@@ -5967,10 +5941,7 @@ export function createTypeEvaluator(
 
             if (curNode.nodeType === ParseNodeType.Class) {
                 const classTypeInfo = getTypeOfClass(curNode);
-                if (
-                    classTypeInfo &&
-                    (!ClassType.isPartiallyEvaluated(classTypeInfo.classType) || curNode.d.typeParams)
-                ) {
+                if (classTypeInfo && !ClassType.isPartiallyEvaluated(classTypeInfo.classType)) {
                     typeParamsForScope = classTypeInfo.classType.shared.typeParams;
                 }
 
@@ -8222,55 +8193,7 @@ export function createTypeEvaluator(
                         const typeArgsWithNodes = getTypeArgs(node, flags);
                         const typeArgs = typeArgsWithNodes.map((typeArg) => convertToInstance(typeArg.type));
 
-                        const isExplicitTemplateConstraint = (type: Type) =>
-                            (isTypeVar(type) || isClassInstance(type)) &&
-                            (type.shared.typeParams.length === typeArgs.length ||
-                                getTypeVarArgsRecursive(type).length === typeArgs.length) &&
-                            type.priv.typeArgs !== undefined &&
-                            getTypeVarArgsRecursive(type).length > 0;
-
-                        let hasExplicitTemplate = false;
-                        if (unexpandedSubtype.shared.constraints.length > 0) {
-                            hasExplicitTemplate =
-                                unexpandedSubtype.shared.constraints.every(isExplicitTemplateConstraint);
-                            if (hasExplicitTemplate && unexpandedSubtype.shared.typeParams.length === 0) {
-                                const firstConstraint = unexpandedSubtype.shared.constraints[0];
-                                if (isClassInstance(firstConstraint) && firstConstraint.priv.typeArgs) {
-                                    unexpandedSubtype.shared.typeParams = getTypeVarArgsRecursive(firstConstraint);
-                                }
-                            }
-                        } else if (unexpandedSubtype.shared.boundType) {
-                            let allBoundsValid = true;
-                            doForEachSubtype(unexpandedSubtype.shared.boundType, (boundSubtype) => {
-                                if (!isExplicitTemplateConstraint(boundSubtype)) {
-                                    allBoundsValid = false;
-                                }
-                            });
-                            hasExplicitTemplate = allBoundsValid;
-                            if (
-                                hasExplicitTemplate &&
-                                unexpandedSubtype.shared.typeParams.length === 0 &&
-                                isClassInstance(unexpandedSubtype.shared.boundType) &&
-                                unexpandedSubtype.shared.boundType.priv.typeArgs
-                            ) {
-                                unexpandedSubtype.shared.typeParams = getTypeVarArgsRecursive(
-                                    unexpandedSubtype.shared.boundType
-                                );
-                            }
-                        }
-
-                        const formalParams = unexpandedSubtype.shared.typeParams;
-                        const expectedArity =
-                            formalParams.length > 0
-                                ? formalParams.length
-                                : hasExplicitTemplate
-                                ? typeArgs.length
-                                : undefined;
-
-                        const isValidTypeApplication =
-                            hasExplicitTemplate || (expectedArity !== undefined && expectedArity === typeArgs.length);
-
-                        if (!isValidTypeApplication) {
+                        if (!TypeVarType.isConstructor(unexpandedSubtype)) {
                             addDiagnostic(
                                 DiagnosticRule.reportGeneralTypeIssues,
                                 LocMessage.typeVarNotSubscriptable().format({
@@ -8281,20 +8204,16 @@ export function createTypeEvaluator(
                             return UnknownType.create();
                         }
 
-                        if (unexpandedSubtype.shared.typeParams.length === 0) {
-                            unexpandedSubtype.shared.typeParams = Array.from({ length: typeArgs.length }, (_, i) =>
-                                TypeVarType.createInstance(`T${i}`)
-                            );
-                        } else if (typeArgs.length !== unexpandedSubtype.shared.typeParams.length) {
-                            const expected = unexpandedSubtype.shared.typeParams.length;
+                        const formalParams = unexpandedSubtype.shared.typeParams;
+                        if (typeArgs.length !== formalParams.length) {
                             addDiagnostic(
                                 DiagnosticRule.reportInvalidTypeArguments,
-                                (typeArgs.length > expected
+                                (typeArgs.length > formalParams.length
                                     ? LocMessage.typeArgsTooMany()
                                     : LocMessage.typeArgsTooFew()
                                 ).format({
                                     name: printType(unexpandedSubtype),
-                                    expected,
+                                    expected: formalParams.length,
                                     received: typeArgs.length,
                                 }),
                                 node
@@ -8474,10 +8393,6 @@ export function createTypeEvaluator(
                     const supportsTypedDictTypeArg =
                         nodeInfo.getFileInfo(node).diagnosticRuleSet.enableExperimentalFeatures &&
                         ClassType.isBuiltIn(concreteSubtype, 'TypedDict');
-                    const isTypeClass =
-                        isInstantiableClass(concreteSubtype) &&
-                        (ClassType.isBuiltIn(concreteSubtype, 'type') ||
-                            ClassType.isSpecialBuiltIn(concreteSubtype, 'Type'));
 
                     let typeArgs = getTypeArgs(node, flags, {
                         isAnnotatedClass,
@@ -8485,7 +8400,6 @@ export function createTypeEvaluator(
                         isFinalAnnotation,
                         isClassVarAnnotation,
                         supportsTypedDictTypeArg,
-                        isTypeClass,
                         typeParams: isInstantiableClass(concreteSubtype)
                             ? concreteSubtype.shared.typeParams
                             : undefined,
@@ -9006,13 +8920,15 @@ export function createTypeEvaluator(
         const getTypeArgTypeResult = (expr: ExpressionNode, argIndex: number) => {
             let typeResult: TypeResultWithNode;
             let effectiveFlags = adjFlags;
+
+            // A type argument for a type constructor parameter is an unapplied
+            // generic class or alias, so it must not be specialized with defaults.
             if (
-                (options?.typeParams &&
-                    argIndex < options.typeParams.length &&
-                    TypeVarType.isConstructor(options.typeParams[argIndex])) ||
-                options?.isTypeClass
+                options?.typeParams &&
+                argIndex < options.typeParams.length &&
+                TypeVarType.isConstructor(options.typeParams[argIndex])
             ) {
-                effectiveFlags |= EvalFlags.AllowMissingTypeArgs;
+                effectiveFlags |= EvalFlags.NoSpecialize;
             }
 
             // If it's a custom __class_getitem__, none of the arguments should be
@@ -14213,6 +14129,8 @@ export function createTypeEvaluator(
                 firstConstraintArg.valueExpression || errorNode
             );
         }
+
+        inferImplicitConstructorParams(typeVar);
 
         // If a default is provided, make sure it is compatible with the bound
         // or constraint.
@@ -23049,8 +22967,8 @@ export function createTypeEvaluator(
             flags |= EvalFlags.EnforceClassTypeVarScope;
         }
 
-        if (options?.allowMissingTypeArgs) {
-            flags |= EvalFlags.AllowMissingTypeArgs;
+        if (options?.noSpecialize) {
+            flags |= EvalFlags.NoSpecialize;
         }
 
         const fileInfo = nodeInfo.getFileInfo(node);
@@ -24009,7 +23927,7 @@ export function createTypeEvaluator(
             const leftTypeResult = getTypeOfExpressionExpectingType(defaultExpr.d.leftExpr, {
                 forwardRefs: true,
                 typeExpression: true,
-                allowMissingTypeArgs: true,
+                noSpecialize: true,
             });
             const leftType = convertToInstance(leftTypeResult.type);
             const aliasInfo = leftType.props?.typeAliasInfo;
@@ -24050,6 +23968,82 @@ export function createTypeEvaluator(
         return defaultType;
     }
 
+    // A TypeVar declared without inner type parameters but bounded by a class applied
+    // to type variables (e.g. `D: dict[T, S]`) is a type constructor whose arity is the
+    // free type variables of its bound or constraints. This must be decided once at
+    // declaration time so that TypeVarDetailsShared is never mutated during evaluation.
+    function inferImplicitConstructorParams(typeVar: TypeVarType) {
+        if (
+            typeVar.shared.kind !== TypeVarKind.TypeVar ||
+            typeVar.shared.typeParams.length > 0 ||
+            typeVar.shared.isSynthesized ||
+            TypeVarType.isSelf(typeVar)
+        ) {
+            return;
+        }
+
+        const templates = typeVar.shared.boundType ? [typeVar.shared.boundType] : typeVar.shared.constraints;
+        let freeTypeVars: TypeVarType[] | undefined;
+
+        // Every bound or constraint must be parameterized by the same free type
+        // variables; otherwise the TypeVar has no well-defined arity.
+        for (const template of templates) {
+            const templateTypeVars = getTypeVarArgsRecursive(template).filter((tv) => !isTypeVarSame(tv, typeVar));
+            if (!freeTypeVars) {
+                freeTypeVars = templateTypeVars;
+            } else if (
+                templateTypeVars.length !== freeTypeVars.length ||
+                !templateTypeVars.every((tv, index) => isTypeVarSame(tv, freeTypeVars![index]))
+            ) {
+                return;
+            }
+        }
+
+        if (freeTypeVars && freeTypeVars.length > 0) {
+            typeVar.shared.typeParams = freeTypeVars;
+        }
+    }
+
+    function verifyConstructorInnerParamsUsed(
+        typeVar: TypeVarType,
+        boundOrConstraintType: Type,
+        errorNode: ParseNode,
+        isConstraint: boolean
+    ) {
+        if (!TypeVarType.isConstructor(typeVar)) {
+            return;
+        }
+
+        const innerParams = typeVar.shared.typeParams;
+        if (innerParams.length === 0) {
+            return;
+        }
+
+        if (isUnknown(boundOrConstraintType)) {
+            return;
+        }
+
+        const usedTypeVars = getTypeVarArgsRecursive(boundOrConstraintType);
+        for (const innerParam of innerParams) {
+            const isUsed = usedTypeVars.some((v) => isTypeVarSame(innerParam, v));
+            if (!isUsed) {
+                addDiagnostic(
+                    DiagnosticRule.reportGeneralTypeIssues,
+                    isConstraint
+                        ? LocMessage.typeVarConstructorInnerParamUnusedConstraint().format({
+                              param: innerParam.shared.name,
+                              name: typeVar.shared.name,
+                          })
+                        : LocMessage.typeVarConstructorInnerParamUnusedBound().format({
+                              param: innerParam.shared.name,
+                              name: typeVar.shared.name,
+                          }),
+                    errorNode
+                );
+            }
+        }
+    }
+
     function getTypeOfTypeParam(node: TypeParameterNode): TypeVarType {
         // Is this type already cached?
         const cachedTypeVarType = readTypeCache(node.d.name, EvalFlags.None) as FunctionType;
@@ -24080,7 +24074,9 @@ export function createTypeEvaluator(
         writeTypeCache(node, { type: typeVar }, /* flags */ undefined);
         writeTypeCache(node.d.name, { type: typeVar }, /* flags */ undefined);
 
-        if (node.d.typeParams) {
+        // Inner type parameters are rejected by the parser for TypeVarTuple and
+        // ParamSpec; ignore them here to avoid cascading diagnostics.
+        if (node.d.typeParams && node.d.typeParamKind === TypeParamKind.TypeVar) {
             typeVar.shared.typeVarScopeId = ParseTreeUtils.getScopeIdForNode(node.d.typeParams, nodeInfo);
             typeVar.shared.typeParams = evaluateTypeParamList(node.d.typeParams).map((t) =>
                 TypeVarType.cloneAsInstance(t)
@@ -24109,6 +24105,8 @@ export function createTypeEvaluator(
                             constraint
                         );
                     }
+
+                    verifyConstructorInnerParamsUsed(typeVar, constraintType, constraint, /* isConstraint */ true);
 
                     return convertToInstance(constraintType);
                 });
@@ -24140,11 +24138,15 @@ export function createTypeEvaluator(
                     );
                 }
 
+                verifyConstructorInnerParamsUsed(typeVar, boundType, node.d.boundExpr, /* isConstraint */ false);
+
                 if (node.d.typeParamKind === TypeParamKind.TypeVar) {
                     typeVar.shared.boundType = convertToInstance(boundType);
                 }
             }
         }
+
+        inferImplicitConstructorParams(typeVar);
 
         if (node.d.typeParamKind === TypeParamKind.ParamSpec) {
             const defaultType = node.d.defaultExpr
@@ -24177,7 +24179,7 @@ export function createTypeEvaluator(
                       getTypeOfExpressionExpectingType(node.d.defaultExpr, {
                           forwardRefs: true,
                           typeExpression: true,
-                          allowMissingTypeArgs: isConstructorTypeVar,
+                          noSpecialize: isConstructorTypeVar,
                       }).type
                   )
                 : undefined;

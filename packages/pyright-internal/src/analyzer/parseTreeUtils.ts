@@ -892,7 +892,13 @@ export function getEvaluationScopeNode(
         // the enclosing scope instead.
         switch (curNode.nodeType) {
             case ParseNodeType.TypeParameter: {
-                if (curNode.d.typeParams && (prevNode === curNode.d.boundExpr || prevNode === curNode.d.defaultExpr)) {
+                // The bound and default of a type constructor parameter are evaluated
+                // within the scope of its inner type parameters.
+                if (
+                    curNode.d.typeParams &&
+                    prevNode !== undefined &&
+                    (prevNode === curNode.d.boundExpr || prevNode === curNode.d.defaultExpr)
+                ) {
                     return { node: curNode.d.typeParams, useProxyScope: true, useChainedModuleLevelScopes };
                 }
                 break;
@@ -1101,27 +1107,14 @@ export function getExecutionScopeNode(
     // scopes are special because they act as proxies for their containing
     // function or class scope.
     while (
+        evaluationScope.nodeType === ParseNodeType.TypeParameterList ||
         evaluationScope.nodeType === ParseNodeType.Class ||
         evaluationScope.nodeType === ParseNodeType.Comprehension
     ) {
-        let parentToEvaluate: ParseNode | undefined = evaluationScope.parent;
-        while (parentToEvaluate?.nodeType === ParseNodeType.TypeParameter) {
-            parentToEvaluate = parentToEvaluate.parent;
-        }
-        if (!parentToEvaluate) {
-            break;
-        }
-        evaluationScope = getEvaluationScopeNode(parentToEvaluate, nodeInfo).node;
+        evaluationScope = getEvaluationScopeNode(evaluationScope.parent!, nodeInfo).node;
     }
 
-    assert(
-        evaluationScope.nodeType === ParseNodeType.Lambda ||
-            evaluationScope.nodeType === ParseNodeType.Function ||
-            evaluationScope.nodeType === ParseNodeType.Module ||
-            evaluationScope.nodeType === ParseNodeType.TypeParameterList
-    );
-
-    return evaluationScope as ExecutionScopeNode;
+    return evaluationScope;
 }
 
 // Given a node within a type annotation expression, returns the type annotation

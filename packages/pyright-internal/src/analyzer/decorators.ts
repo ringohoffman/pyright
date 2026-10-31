@@ -28,7 +28,7 @@ import {
     validatePropertyMethod,
 } from './properties';
 import { Arg, EvalFlags, TypeEvaluator, TypeResult } from './typeEvaluatorTypes';
-import { getTypeVarArgsRecursive, isPartlyUnknown, isProperty } from './typeUtils';
+import { getTypeVarArgsRecursive, hasAppliedConstructorClsParam, isPartlyUnknown, isProperty } from './typeUtils';
 import {
     ClassType,
     ClassTypeFlags,
@@ -516,15 +516,14 @@ function getTypeOfDecorator(
 
     // Special-case the combination of a classmethod decorator applied
     // to a property. This is allowed in Python 3.9, but it's not reflected
-    // in the builtins.pyi stub for classmethod.
+    // in the builtins.pyi stub for classmethod. Also special-case a
+    // classmethod whose `cls` is an applied type constructor, since the
+    // stub's `type[_T]` parameter cannot bind a constructor TypeVar.
     if (
         isInstantiableClass(decoratorTypeResult.type) &&
         ClassType.isBuiltIn(decoratorTypeResult.type, 'classmethod') &&
         (isProperty(functionOrClassType) ||
-            (isFunction(functionOrClassType) &&
-                functionOrClassType.shared.parameters.length > 0 &&
-                isTypeVar(FunctionType.getParamType(functionOrClassType, 0)) &&
-                (FunctionType.getParamType(functionOrClassType, 0) as any).priv.typeArgs !== undefined))
+            (isFunction(functionOrClassType) && hasAppliedConstructorClsParam(functionOrClassType)))
     ) {
         return functionOrClassType;
     }

@@ -109,6 +109,7 @@ import {
     assignTypeVar,
     solveConstraints,
     solveConstraintSet,
+    validateConstructorArity,
 } from './constraintSolver';
 import { ConstraintSet, ConstraintTracker } from './constraintTracker';
 import { createFunctionFromConstructor, getBoundInitMethod, validateConstructorArgs } from './constructors';
@@ -338,6 +339,8 @@ import {
     getTypeVarScopeIds,
     getUnknownForTypeVar,
     getUnknownTypeForCallable,
+    hasAppliedConstructorClsParam,
+    getConstructorTemplateTypeVars,
     InferenceContext,
     invertVariance,
     isDescriptorInstance,
@@ -383,6 +386,7 @@ import {
     simplifyFunctionToParamSpec,
     someSubtypes,
     sortTypes,
+    specializeConstructorTemplate,
     specializeForBaseClass,
     specializeTupleClass,
     specializeWithDefaultTypeArgs,
@@ -2689,6 +2693,52 @@ export function createTypeEvaluator(
         return applySolvedTypeVars(type, solution, applyOptions);
     }
 
+    // Determines whether the named member is a classmethod (or __new__, when
+    // treated as a classmethod) whose `cls` parameter is annotated with an
+    // applied type constructor such as `type[D[T, S]]`. The declaration is
+    // inspected syntactically first so that the common case (unannotated
+    // `cls`) never triggers type evaluation on this hot path.
+    function isMemberAppliedConstructorClassMethod(
+        classType: ClassType,
+        memberName: string,
+        flags: MemberAccessFlags
+    ): boolean {
+        const member = lookUpClassMember(classType, memberName);
+        if (!member?.isTypeDeclared) {
+            return false;
+        }
+
+        const hasAnnotatedFirstParam = member.symbol.getDeclarations().some((decl) => {
+            if (decl.type !== DeclarationType.Function) {
+                return false;
+            }
+            const firstParam = decl.node.d.params[0];
+            return firstParam?.d.annotation !== undefined || firstParam?.d.annotationComment !== undefined;
+        });
+        if (!hasAnnotatedFirstParam) {
+            return false;
+        }
+
+        const declaredType = getDeclaredTypeOfSymbol(member.symbol)?.type;
+        if (!declaredType) {
+            return false;
+        }
+
+        const isApplicable = (fn: FunctionType) =>
+            (FunctionType.isClassMethod(fn) ||
+                ((flags & MemberAccessFlags.TreatConstructorAsClassMethod) !== 0 &&
+                    FunctionType.isConstructorMethod(fn))) &&
+            hasAppliedConstructorClsParam(fn);
+
+        if (isFunction(declaredType)) {
+            return isApplicable(declaredType);
+        }
+        if (isOverloaded(declaredType)) {
+            return OverloadedType.getOverloads(declaredType).some(isApplicable);
+        }
+        return false;
+    }
+
     // Gets a member type from an object or class. If it's a function, binds
     // it to the object or class. If selfType is undefined, the binding is done
     // using the objectType parameter. Callers can specify these separately
@@ -2725,26 +2775,9 @@ export function createTypeEvaluator(
             // Skip this if we're suppressing the use of attribute access override,
             // such as with dundered methods (like __call__).
             if ((flags & MemberAccessFlags.SkipAttributeAccessOverride) === 0) {
-                let hasHktClsParam = false;
-                const unspecializedMember = lookUpClassMember(objectType, memberName);
-                if (unspecializedMember?.isTypeDeclared) {
-                    const declaredType = getDeclaredTypeOfSymbol(unspecializedMember.symbol)?.type;
-                    if (declaredType) {
-                        const checkHkt = (fn: FunctionType) =>
-                            (FunctionType.isClassMethod(fn) ||
-                                ((flags & MemberAccessFlags.TreatConstructorAsClassMethod) !== 0 &&
-                                    FunctionType.isConstructorMethod(fn))) &&
-                            fn.shared.parameters.length > 0 &&
-                            isTypeVar(FunctionType.getParamType(fn, 0)) &&
-                            (FunctionType.getParamType(fn, 0) as any).priv.typeArgs !== undefined;
-                        if (isFunction(declaredType)) {
-                            hasHktClsParam = checkHkt(declaredType);
-                        } else if (isOverloaded(declaredType)) {
-                            hasHktClsParam = OverloadedType.getOverloads(declaredType).some(checkHkt);
-                        }
-                    }
-                }
-                if (!hasHktClsParam) {
+                // A classmethod (or __new__) whose `cls` is an applied type constructor
+                // must see the unspecialized class so the constructor can be solved.
+                if (!isMemberAppliedConstructorClassMethod(objectType, memberName, flags)) {
                     objectType = specializeWithDefaultTypeArgs(objectType);
                 }
             }
@@ -4883,20 +4916,12 @@ export function createTypeEvaluator(
                         }
 
                         if (subtype.priv.typeArgs) {
-                            const templateTypeVars =
-                                subtype.shared.typeParams.length > 0
-                                    ? subtype.shared.typeParams
-                                    : getTypeVarArgsRecursive(constraintType);
-                            if (
-                                templateTypeVars.length > 0 &&
-                                templateTypeVars.length === subtype.priv.typeArgs.length
-                            ) {
-                                const templateSolution = new ConstraintSolution();
-                                for (let i = 0; i < templateTypeVars.length; i++) {
-                                    templateSolution.setType(templateTypeVars[i], subtype.priv.typeArgs[i]);
-                                }
-                                constraintType = applySolvedTypeVars(constraintType, templateSolution);
-                            }
+                            constraintType =
+                                specializeConstructorTemplate(
+                                    constraintType,
+                                    getConstructorTemplateTypeVars(subtype, constraintType),
+                                    subtype.priv.typeArgs
+                                ) ?? constraintType;
                         }
 
                         if (TypeBase.isInstantiable(subtype)) {
@@ -4919,18 +4944,12 @@ export function createTypeEvaluator(
                 let boundType = subtype.shared.boundType ?? getObjectType();
 
                 if (subtype.priv.typeArgs && subtype.shared.boundType) {
-                    const template = subtype.shared.boundType;
-                    const templateTypeVars =
-                        subtype.shared.typeParams.length > 0
-                            ? subtype.shared.typeParams
-                            : getTypeVarArgsRecursive(template);
-                    if (templateTypeVars.length > 0 && templateTypeVars.length === subtype.priv.typeArgs.length) {
-                        const templateSolution = new ConstraintSolution();
-                        for (let i = 0; i < templateTypeVars.length; i++) {
-                            templateSolution.setType(templateTypeVars[i], subtype.priv.typeArgs[i]);
-                        }
-                        boundType = applySolvedTypeVars(boundType, templateSolution);
-                    }
+                    boundType =
+                        specializeConstructorTemplate(
+                            boundType,
+                            getConstructorTemplateTypeVars(subtype, subtype.shared.boundType),
+                            subtype.priv.typeArgs
+                        ) ?? boundType;
                 }
 
                 // If this is a synthesized self/cls type var, self-specialize its type arguments.
@@ -27336,6 +27355,476 @@ export function createTypeEvaluator(
         return isCompatible;
     }
 
+    // Returns the bound (as subtypes) or constraints of a type constructor TypeVar
+    // that are class instances and can therefore serve as unification templates.
+    function getConstructorTemplates(typeVar: TypeVarType): ClassType[] {
+        const templates: ClassType[] = [];
+        if (typeVar.shared.constraints.length > 0) {
+            typeVar.shared.constraints.forEach((constraint) => {
+                if (isClassInstance(constraint)) {
+                    templates.push(constraint);
+                }
+            });
+        } else if (typeVar.shared.boundType) {
+            doForEachSubtype(typeVar.shared.boundType, (boundSubtype) => {
+                if (isClassInstance(boundSubtype)) {
+                    templates.push(boundSubtype);
+                }
+            });
+        }
+        return templates;
+    }
+
+    // Returns the specialized form of `srcType`'s base class that matches one
+    // of the constructor templates, for sources like `class Int32Array(Array[Int32])`
+    // assigned to `F[X]` where `F: Array[T]`.
+    function specializeSourceForConstructorTemplate(destType: TypeVarType, srcType: ClassType): ClassType | undefined {
+        for (const candidate of getConstructorTemplates(destType)) {
+            const instantiableCandidate = ClassType.cloneAsInstantiable(candidate);
+            const matchesCandidate = (cls: Type): cls is ClassType =>
+                isInstantiableClass(cls) &&
+                (ClassType.isSameGenericClass(cls, instantiableCandidate) ||
+                    ClassType.isDerivedFrom(cls, instantiableCandidate));
+            const matchingBase =
+                srcType.shared.baseClasses.find(matchesCandidate) ?? srcType.shared.mro.find(matchesCandidate);
+            if (!matchingBase) {
+                continue;
+            }
+
+            let specializedBase = matchingBase.priv.typeArgs
+                ? matchingBase
+                : specializeForBaseClass(ClassType.cloneAsInstantiable(srcType), matchingBase);
+
+            // Bind any still-free type variables of the base to the concrete
+            // arguments fixed by the template (e.g. the `str` in `dict[str, V]`).
+            if (candidate.priv.typeArgs && specializedBase.priv.typeArgs) {
+                const solution = new ConstraintSolution();
+                const count = Math.min(specializedBase.priv.typeArgs.length, candidate.priv.typeArgs.length);
+                for (let i = 0; i < count; i++) {
+                    const baseTypeArg = specializedBase.priv.typeArgs[i];
+                    const candidateTypeArg = candidate.priv.typeArgs[i];
+                    if (isTypeVar(baseTypeArg) && !isTypeVar(candidateTypeArg)) {
+                        solution.setType(baseTypeArg, candidateTypeArg);
+                    }
+                }
+                if (!solution.isEmpty()) {
+                    specializedBase = applySolvedTypeVars(specializedBase, solution) as ClassType;
+                }
+            }
+
+            if (specializedBase.priv.typeArgs) {
+                return TypeBase.isInstance(srcType) ? ClassType.cloneAsInstance(specializedBase) : specializedBase;
+            }
+
+            if (candidate.priv.typeArgs) {
+                const targetToSpecialize =
+                    srcType.shared.typeParams.length === candidate.priv.typeArgs.length ? srcType : matchingBase;
+                const specializedCandidate = ClassType.specialize(targetToSpecialize, candidate.priv.typeArgs);
+                return TypeBase.isInstance(srcType)
+                    ? ClassType.cloneAsInstance(specializedCandidate)
+                    : specializedCandidate;
+            }
+        }
+
+        return undefined;
+    }
+
+    // Converts a source class into a specialized form whose type arguments can
+    // be unified with the applied type arguments of `destType`. An unspecialized
+    // generic class is applied directly; an unspecialized alias is specialized
+    // with Unknown; a subclass of the bound is specialized through its base.
+    // Returns undefined if no specialized form with type arguments exists.
+    function normalizeAppliedConstructorSource(destType: TypeVarType, srcType: ClassType): ClassType | undefined {
+        const appliedTypeArgs = destType.priv.typeArgs!;
+        let effectiveSrc: ClassType = srcType;
+
+        if (!srcType.priv.typeArgs) {
+            const aliasInfo = srcType.props?.typeAliasInfo;
+            if (aliasInfo?.shared.typeParams && aliasInfo.shared.typeParams.length === appliedTypeArgs.length) {
+                const aliasSolution = new ConstraintSolution();
+                aliasInfo.shared.typeParams.forEach((param) => aliasSolution.setType(param, UnknownType.create()));
+                const specialized = TypeBase.cloneForTypeAlias(applySolvedTypeVars(srcType, aliasSolution), {
+                    ...aliasInfo,
+                    typeArgs: aliasInfo.shared.typeParams.map(() => UnknownType.create()),
+                });
+                if (isClass(specialized)) {
+                    effectiveSrc = TypeBase.isInstance(srcType)
+                        ? ClassType.cloneAsInstance(specialized)
+                        : ClassType.cloneAsInstantiable(specialized);
+                }
+            } else if (srcType.shared.typeParams.length === appliedTypeArgs.length) {
+                const specialized = ClassType.specialize(srcType, appliedTypeArgs);
+                effectiveSrc = TypeBase.isInstance(srcType) ? ClassType.cloneAsInstance(specialized) : specialized;
+            } else {
+                effectiveSrc = specializeSourceForConstructorTemplate(destType, srcType) ?? srcType;
+            }
+        }
+
+        if (!effectiveSrc.priv.typeArgs && !effectiveSrc.props?.typeAliasInfo?.typeArgs) {
+            return undefined;
+        }
+
+        if (TypeBase.isInstantiable(destType) && !TypeBase.isInstantiable(effectiveSrc)) {
+            return ClassType.cloneAsInstantiable(effectiveSrc);
+        }
+        if (!TypeBase.isInstantiable(destType) && TypeBase.isInstantiable(effectiveSrc)) {
+            return ClassType.cloneAsInstance(effectiveSrc);
+        }
+        return effectiveSrc;
+    }
+
+    // Returns the unapplied constructor (generic class without type arguments)
+    // that a source class contributes as the solution for a constructor TypeVar.
+    function getConstructorFromSource(originalSrc: ClassType, effectiveSrc: ClassType): ClassType {
+        if (
+            TypeBase.isInstantiable(effectiveSrc) &&
+            effectiveSrc.props?.typeForm &&
+            isClass(effectiveSrc.props.typeForm)
+        ) {
+            return TypeBase.cloneWithTypeForm(ClassType.specialize(effectiveSrc.props.typeForm, undefined), undefined);
+        }
+        const source = originalSrc.shared.typeParams.length > 0 ? originalSrc : effectiveSrc;
+        return ClassType.cloneAsInstance(ClassType.specialize(source, undefined));
+    }
+
+    // Checks whether `constructor` satisfies the upper bound of a constructor
+    // TypeVar. Returns the matching bound subtype, or undefined when the bound
+    // is not satisfied (in which case an addendum is recorded).
+    function matchConstructorAgainstBound(
+        destType: TypeVarType,
+        constructor: ClassType,
+        srcTypeForDiag: Type,
+        diag: DiagnosticAddendum | undefined,
+        constraints: ConstraintTracker | undefined,
+        flags: AssignTypeFlags,
+        recursionCount: number
+    ): { matched: ClassType | undefined } | undefined {
+        const boundType = destType.shared.boundType;
+        if (!boundType) {
+            return { matched: undefined };
+        }
+
+        let matched: ClassType | undefined;
+        doForEachSubtype(boundType, (boundSubtype) => {
+            if (!isClassInstance(boundSubtype)) {
+                return;
+            }
+
+            if (ClassType.isSameGenericClass(boundSubtype, constructor)) {
+                matched = boundSubtype;
+            } else if (ClassType.isDerivedFrom(constructor, boundSubtype)) {
+                const instantiableBound = ClassType.cloneAsInstantiable(boundSubtype);
+                if (
+                    constructor.shared.mro.some(
+                        (mroClass) =>
+                            isInstantiableClass(mroClass) && ClassType.isSameGenericClass(mroClass, instantiableBound)
+                    )
+                ) {
+                    matched = boundSubtype;
+                }
+            } else if (ClassType.isProtocolClass(boundSubtype)) {
+                // Structural bound: apply the constructor to the template's (or the
+                // applied) type arguments and check it against the protocol.
+                const typeArgsForCandidate = boundSubtype.priv.typeArgs ?? destType.priv.typeArgs;
+                const specializedCandidate = typeArgsForCandidate
+                    ? ClassType.specialize(constructor, typeArgsForCandidate)
+                    : constructor;
+                if (
+                    assignType(
+                        boundSubtype,
+                        specializedCandidate,
+                        /* diag */ undefined,
+                        constraints,
+                        flags,
+                        recursionCount
+                    )
+                ) {
+                    matched = boundSubtype;
+                }
+            }
+        });
+
+        if (!matched) {
+            if (!destType.shared.isSynthesized) {
+                diag?.addMessage(
+                    LocAddendum.typeBound().format({
+                        sourceType: printType(convertToInstance(srcTypeForDiag)),
+                        destType: printType(boundType),
+                        name: TypeVarType.getReadableName(destType),
+                    })
+                );
+            }
+            return undefined;
+        }
+
+        return { matched };
+    }
+
+    // Checks whether `constructor` satisfies the constraints of a constructor
+    // TypeVar. Returns the matching constraint, or undefined when none matches
+    // (in which case an addendum is recorded).
+    function matchConstructorAgainstConstraints(
+        destType: TypeVarType,
+        constructor: ClassType,
+        srcTypeForDiag: Type,
+        diag: DiagnosticAddendum | undefined
+    ): ClassType | undefined {
+        const matched = destType.shared.constraints.find(
+            (constraint): constraint is ClassType =>
+                isClassInstance(constraint) &&
+                (ClassType.isSameGenericClass(constraint, constructor) ||
+                    ClassType.isDerivedFrom(constructor, constraint))
+        );
+
+        if (!matched && !destType.shared.isSynthesized) {
+            diag?.addMessage(
+                LocAddendum.typeConstrainedTypeVar().format({
+                    type: printType(convertToInstance(srcTypeForDiag)),
+                    name: TypeVarType.getReadableName(destType),
+                })
+            );
+        }
+
+        return matched;
+    }
+
+    // Unifies the source with the template (bound or constraint) specialized by
+    // the applied type arguments, e.g. `Array[X]` against `Array[IntScalar]`
+    // binds `X <- IntScalar`.
+    function assignSourceToConstructorTemplate(
+        destType: TypeVarType,
+        template: ClassType,
+        templateTypeVars: TypeVarType[],
+        effectiveSrc: ClassType,
+        diag: DiagnosticAddendum | undefined,
+        constraints: ConstraintTracker | undefined,
+        flags: AssignTypeFlags,
+        recursionCount: number
+    ): boolean {
+        const appliedTypeArgs = destType.priv.typeArgs!;
+        const specializedTemplate =
+            specializeConstructorTemplate(template, templateTypeVars, appliedTypeArgs) ?? template;
+        const templateToCheck = TypeBase.isInstantiable(effectiveSrc)
+            ? convertToInstantiable(specializedTemplate)
+            : convertToInstance(specializedTemplate);
+
+        if (!assignType(templateToCheck, effectiveSrc, diag, constraints, flags, recursionCount)) {
+            return false;
+        }
+
+        // A bounded or constrained template parameter (e.g. `S` in `Array[S]`)
+        // must also be satisfied by the corresponding source type argument.
+        if (template.priv.typeArgs && effectiveSrc.priv.typeArgs) {
+            for (let i = 0; i < template.priv.typeArgs.length; i++) {
+                const templateArg = template.priv.typeArgs[i];
+                const srcTypeArg = effectiveSrc.priv.typeArgs[i];
+                if (isTypeVar(templateArg) && srcTypeArg) {
+                    if (
+                        !assignType(templateArg, srcTypeArg, diag, /* constraints */ undefined, flags, recursionCount)
+                    ) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // Unifies the applied type arguments of `destType` directly against the type
+    // arguments of the source class, honoring the variance of each parameter.
+    function assignAppliedTypeArgsDirectly(
+        destType: TypeVarType,
+        effectiveSrc: ClassType,
+        diag: DiagnosticAddendum | undefined,
+        constraints: ConstraintTracker | undefined,
+        flags: AssignTypeFlags,
+        recursionCount: number
+    ): boolean {
+        const appliedTypeArgs = destType.priv.typeArgs!;
+        const srcTypeArgs = effectiveSrc.priv.typeArgs;
+        if (!srcTypeArgs || appliedTypeArgs.length !== srcTypeArgs.length) {
+            return false;
+        }
+
+        for (let i = 0; i < appliedTypeArgs.length; i++) {
+            const typeParam = i < effectiveSrc.shared.typeParams.length ? effectiveSrc.shared.typeParams[i] : undefined;
+            const declaredVariance = typeParam
+                ? typeParam.priv.computedVariance ?? typeParam.shared.declaredVariance
+                : Variance.Covariant;
+            const variance =
+                declaredVariance === Variance.Auto || declaredVariance === Variance.Unknown
+                    ? Variance.Covariant
+                    : declaredVariance;
+
+            let effectiveFlags = flags;
+            if (variance === Variance.Contravariant) {
+                effectiveFlags |= AssignTypeFlags.Contravariant;
+            } else if (variance === Variance.Invariant) {
+                effectiveFlags |= AssignTypeFlags.Invariant;
+            }
+
+            const [dest, src] =
+                variance === Variance.Contravariant
+                    ? [srcTypeArgs[i], appliedTypeArgs[i]]
+                    : [appliedTypeArgs[i], srcTypeArgs[i]];
+            if (!assignType(dest, src, diag, constraints, effectiveFlags, recursionCount)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Records `constructor` as the solution for the (unapplied) constructor
+    // TypeVar. A constructor TypeVar is nominal: a second, different constructor
+    // for the same TypeVar is a failure rather than a widening.
+    function recordConstructorSolution(
+        constraints: ConstraintTracker | undefined,
+        constructorTypeVar: TypeVarType,
+        constructor: ClassType
+    ): boolean {
+        const constraintSet = constraints?.getMainConstraintSet();
+        if (!constraintSet) {
+            return true;
+        }
+
+        const existing = constraintSet.getTypeVar(constructorTypeVar);
+        const existingConstructor = existing?.lowerBound ?? existing?.upperBound;
+        if (existingConstructor && !isTypeSame(existingConstructor, constructor)) {
+            return false;
+        }
+
+        constraintSet.setBounds(constructorTypeVar, constructor, constructor);
+        return true;
+    }
+
+    // Assigns a source type to an applied type constructor TypeVar such as
+    // `F[int]`. The source must be a generic class (or alias) whose type
+    // arguments unify with the applied arguments; on success the unapplied
+    // constructor is recorded as the solution for `F`.
+    function assignTypeToAppliedTypeVar(
+        destType: TypeVarType,
+        srcType: Type,
+        diag: DiagnosticAddendum | undefined,
+        constraints: ConstraintTracker | undefined,
+        flags: AssignTypeFlags,
+        recursionCount: number
+    ): boolean {
+        const appliedTypeArgs = destType.priv.typeArgs!;
+
+        if (isAnyOrUnknown(srcType)) {
+            return true;
+        }
+
+        if (isNever(srcType)) {
+            return (flags & AssignTypeFlags.Invariant) === 0;
+        }
+
+        if (isUnion(srcType)) {
+            return assignFromUnionType(destType, srcType, diag, constraints, flags, recursionCount);
+        }
+
+        if (TypeVarType.isBound(destType)) {
+            return assignType(
+                makeTopLevelTypeVarsConcrete(destType),
+                srcType,
+                diag,
+                /* constraints */ undefined,
+                flags,
+                recursionCount
+            );
+        }
+
+        if (!isClass(srcType)) {
+            diag?.addMessage(LocAddendum.typeNotGenericConstructor().format({ type: printType(srcType) }));
+            return false;
+        }
+
+        const effectiveSrc = normalizeAppliedConstructorSource(destType, srcType);
+        if (!effectiveSrc) {
+            diag?.addMessage(LocAddendum.typeNotGenericConstructor().format({ type: printType(srcType) }));
+            return false;
+        }
+
+        let constructor = getConstructorFromSource(srcType, effectiveSrc);
+        const constructorInstance = ClassType.cloneAsInstance(constructor);
+        const constructorTypeVar = TypeVarType.cloneForTypeApplication(destType, undefined);
+
+        const boundMatch = matchConstructorAgainstBound(
+            destType,
+            constructorInstance,
+            effectiveSrc,
+            diag,
+            constraints,
+            flags,
+            recursionCount
+        );
+        if (!boundMatch) {
+            return false;
+        }
+
+        let template = boundMatch.matched;
+        const hasConstraints = destType.shared.constraints.length > 0;
+        if (hasConstraints) {
+            template = matchConstructorAgainstConstraints(destType, constructorInstance, effectiveSrc, diag);
+            if (!template) {
+                return false;
+            }
+        }
+
+        const templateTypeVars = template?.priv.typeArgs ? getTypeVarArgsRecursive(template) : [];
+
+        if (
+            template &&
+            templateTypeVars.length > 0 &&
+            templateTypeVars.length === appliedTypeArgs.length &&
+            (ClassType.isSameGenericClass(template, constructorInstance) ||
+                ClassType.isDerivedFrom(constructorInstance, template))
+        ) {
+            const expectedArity = template.shared.typeParams.length;
+            if (srcType.shared.typeParams.length > 0 && srcType.shared.typeParams.length !== expectedArity) {
+                if (!validateConstructorArity(evaluatorInterface, constructorTypeVar, srcType, diag, expectedArity)) {
+                    return false;
+                }
+            }
+
+            if (
+                !assignSourceToConstructorTemplate(
+                    destType,
+                    template,
+                    templateTypeVars,
+                    effectiveSrc,
+                    diag,
+                    constraints,
+                    flags,
+                    recursionCount
+                )
+            ) {
+                return false;
+            }
+
+            if (hasConstraints) {
+                constructor = template;
+            }
+        } else {
+            if (!assignAppliedTypeArgsDirectly(destType, effectiveSrc, diag, constraints, flags, recursionCount)) {
+                return false;
+            }
+
+            if (template && destType.shared.boundType) {
+                const boundToCheck = TypeBase.isInstantiable(destType)
+                    ? convertToInstantiable(destType.shared.boundType)
+                    : convertToInstance(destType.shared.boundType);
+                if (!assignType(boundToCheck, effectiveSrc, diag, constraints, flags, recursionCount)) {
+                    return false;
+                }
+            }
+        }
+
+        return recordConstructorSolution(constraints, constructorTypeVar, constructor);
+    }
+
     // Determines if the source type can be assigned to the dest type.
     // If constraint are provided, type variables within the destType are
     // matched against existing type variables in the map. If a type variable
@@ -27496,404 +27985,7 @@ export function createTypeEvaluator(
         }
 
         if (isTypeVar(destType) && destType.priv.typeArgs) {
-            if (isAnyOrUnknown(srcType)) {
-                return true;
-            }
-
-            if (isNever(srcType)) {
-                return (flags & AssignTypeFlags.Invariant) === 0;
-            }
-
-            if (isUnion(srcType)) {
-                return assignFromUnionType(destType, srcType, diag, constraints, flags, recursionCount);
-            }
-
-            if (TypeVarType.isBound(destType)) {
-                return assignType(
-                    makeTopLevelTypeVarsConcrete(destType),
-                    srcType,
-                    diag,
-                    /* constraints */ undefined,
-                    flags,
-                    recursionCount
-                );
-            }
-
-            if (!isClassInstance(srcType) && !isInstantiableClass(srcType)) {
-                diag?.addMessage(
-                    LocAddendum.typeNotGenericConstructor().format({
-                        type: printType(srcType),
-                    })
-                );
-                return false;
-            }
-
-            const originalSrcClass = srcType;
-            let effectiveSrcClass = srcType;
-            if (!effectiveSrcClass.priv.typeArgs && isClass(srcType)) {
-                const appliedTypeArgs = destType.priv.typeArgs;
-                const aliasInfo = srcType.props?.typeAliasInfo;
-
-                if (aliasInfo?.shared.typeParams && aliasInfo.shared.typeParams.length === appliedTypeArgs.length) {
-                    const aliasSolution = new ConstraintSolution();
-                    for (let i = 0; i < aliasInfo.shared.typeParams.length; i++) {
-                        aliasSolution.setType(aliasInfo.shared.typeParams[i], UnknownType.create());
-                    }
-                    const specialized = applySolvedTypeVars(srcType, aliasSolution);
-                    const specializedWithAlias = TypeBase.cloneForTypeAlias(specialized, {
-                        ...aliasInfo,
-                        typeArgs: aliasInfo.shared.typeParams.map(() => UnknownType.create()),
-                    });
-                    if (isClass(specializedWithAlias)) {
-                        effectiveSrcClass = TypeBase.isInstance(srcType)
-                            ? ClassType.cloneAsInstance(specializedWithAlias)
-                            : ClassType.cloneAsInstantiable(specializedWithAlias);
-                    }
-                } else if (srcType.shared.typeParams.length === appliedTypeArgs.length) {
-                    const specialized = ClassType.specialize(srcType, appliedTypeArgs);
-                    effectiveSrcClass = TypeBase.isInstance(srcType)
-                        ? ClassType.cloneAsInstance(specialized)
-                        : specialized;
-                } else {
-                    // If srcType inherits from a generic base
-                    // (e.g. class Int32Array(Array[Int32Dtype])), find the specialized base class
-                    // that matches destType's constraint/bound template.
-                    const constructorTypeVar = TypeVarType.cloneForTypeApplication(destType, undefined);
-                    const candidates: ClassType[] = [];
-                    if (constructorTypeVar.shared.constraints.length > 0) {
-                        constructorTypeVar.shared.constraints.forEach((c) => {
-                            if (isClassInstance(c)) {
-                                candidates.push(c);
-                            }
-                        });
-                    } else if (constructorTypeVar.shared.boundType) {
-                        doForEachSubtype(constructorTypeVar.shared.boundType, (b) => {
-                            if (isClassInstance(b)) {
-                                candidates.push(b);
-                            }
-                        });
-                    }
-
-                    for (const candidate of candidates) {
-                        const instantiableCandidate = ClassType.cloneAsInstantiable(candidate);
-                        const matchingBase =
-                            srcType.shared.baseClasses.find(
-                                (b): b is ClassType =>
-                                    isInstantiableClass(b) &&
-                                    (ClassType.isSameGenericClass(b, instantiableCandidate) ||
-                                        ClassType.isDerivedFrom(b, instantiableCandidate))
-                            ) ??
-                            srcType.shared.mro.find(
-                                (mroClass): mroClass is ClassType =>
-                                    isInstantiableClass(mroClass) &&
-                                    (ClassType.isSameGenericClass(mroClass, instantiableCandidate) ||
-                                        ClassType.isDerivedFrom(mroClass, instantiableCandidate))
-                            );
-                        if (matchingBase) {
-                            let specializedBase = matchingBase.priv.typeArgs
-                                ? matchingBase
-                                : specializeForBaseClass(ClassType.cloneAsInstantiable(srcType), matchingBase);
-                            if (candidate.priv.typeArgs && specializedBase.priv.typeArgs) {
-                                const solution = new ConstraintSolution();
-                                for (
-                                    let i = 0;
-                                    i < specializedBase.priv.typeArgs.length && i < candidate.priv.typeArgs.length;
-                                    i++
-                                ) {
-                                    const baseTypeArg = specializedBase.priv.typeArgs[i];
-                                    const candidateTypeArg = candidate.priv.typeArgs[i];
-                                    if (isTypeVar(baseTypeArg) && !isTypeVar(candidateTypeArg)) {
-                                        solution.setType(baseTypeArg, candidateTypeArg);
-                                    }
-                                }
-                                if (!solution.isEmpty()) {
-                                    specializedBase = applySolvedTypeVars(specializedBase, solution) as ClassType;
-                                }
-                            }
-                            if (specializedBase.priv.typeArgs) {
-                                effectiveSrcClass = TypeBase.isInstance(srcType)
-                                    ? ClassType.cloneAsInstance(specializedBase)
-                                    : specializedBase;
-                                break;
-                            } else if (candidate.priv.typeArgs) {
-                                const targetToSpecialize =
-                                    srcType.shared.typeParams.length === candidate.priv.typeArgs.length
-                                        ? srcType
-                                        : matchingBase;
-                                const specializedCandidate = ClassType.specialize(
-                                    targetToSpecialize,
-                                    candidate.priv.typeArgs
-                                );
-                                effectiveSrcClass = TypeBase.isInstance(srcType)
-                                    ? ClassType.cloneAsInstance(specializedCandidate)
-                                    : specializedCandidate;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!effectiveSrcClass.priv.typeArgs && !effectiveSrcClass.props?.typeAliasInfo?.typeArgs) {
-                diag?.addMessage(
-                    LocAddendum.typeNotGenericConstructor().format({
-                        type: printType(srcType),
-                    })
-                );
-                return false;
-            }
-
-            if (TypeBase.isInstantiable(destType) && !TypeBase.isInstantiable(effectiveSrcClass)) {
-                effectiveSrcClass = ClassType.cloneAsInstantiable(effectiveSrcClass);
-            } else if (!TypeBase.isInstantiable(destType) && TypeBase.isInstantiable(effectiveSrcClass)) {
-                effectiveSrcClass = ClassType.cloneAsInstance(effectiveSrcClass);
-            }
-
-            srcType = effectiveSrcClass;
-
-            let constructorType =
-                isClass(originalSrcClass) && originalSrcClass.shared.typeParams.length > 0
-                    ? ClassType.cloneAsInstance(ClassType.specialize(originalSrcClass, undefined))
-                    : ClassType.cloneAsInstance(ClassType.specialize(srcType, undefined));
-            if (TypeBase.isInstantiable(srcType) && srcType.props?.typeForm && isClass(srcType.props.typeForm)) {
-                constructorType = TypeBase.cloneWithTypeForm(
-                    ClassType.specialize(srcType.props.typeForm, undefined),
-                    undefined
-                );
-            }
-            const constructorTypeForConstraint = ClassType.cloneAsInstance(constructorType);
-
-            const constructorTypeVar = TypeVarType.cloneForTypeApplication(destType, undefined);
-            let matchedConstraint: ClassType | undefined;
-
-            if (constructorTypeVar.shared.boundType) {
-                let matchesBound = false;
-                doForEachSubtype(constructorTypeVar.shared.boundType, (boundSubtype) => {
-                    if (isClassInstance(boundSubtype)) {
-                        if (ClassType.isSameGenericClass(boundSubtype, constructorTypeForConstraint)) {
-                            matchesBound = true;
-                            matchedConstraint = boundSubtype;
-                        } else if (ClassType.isDerivedFrom(constructorTypeForConstraint, boundSubtype)) {
-                            const instantiableBound = ClassType.cloneAsInstantiable(boundSubtype);
-                            const matchingBase = constructorTypeForConstraint.shared.mro.find(
-                                (mroClass): mroClass is ClassType =>
-                                    isInstantiableClass(mroClass) &&
-                                    ClassType.isSameGenericClass(mroClass, instantiableBound)
-                            );
-                            if (matchingBase) {
-                                matchesBound = true;
-                                matchedConstraint = boundSubtype;
-                            }
-                        } else if (ClassType.isProtocolClass(boundSubtype)) {
-                            const appliedTypeArgs = isTypeVar(destType) ? destType.priv.typeArgs : undefined;
-                            const typeArgsForCandidate = boundSubtype.priv.typeArgs ?? appliedTypeArgs;
-                            const specializedCandidate = typeArgsForCandidate
-                                ? ClassType.specialize(constructorTypeForConstraint, typeArgsForCandidate)
-                                : constructorTypeForConstraint;
-                            if (
-                                assignType(
-                                    boundSubtype,
-                                    specializedCandidate,
-                                    /* diag */ undefined,
-                                    constraints,
-                                    flags,
-                                    recursionCount
-                                )
-                            ) {
-                                matchesBound = true;
-                                matchedConstraint = boundSubtype;
-                            }
-                        }
-                    }
-                });
-
-                if (!matchesBound) {
-                    if (!destType.shared.isSynthesized) {
-                        diag?.addMessage(
-                            LocAddendum.typeBound().format({
-                                sourceType: printType(convertToInstance(srcType)),
-                                destType: printType(constructorTypeVar.shared.boundType),
-                                name: TypeVarType.getReadableName(destType),
-                            })
-                        );
-                    }
-                    return false;
-                }
-            }
-
-            if (constructorTypeVar.shared.constraints.length > 0) {
-                matchedConstraint = constructorTypeVar.shared.constraints.find(
-                    (constraint): constraint is ClassType =>
-                        isClassInstance(constraint) &&
-                        (ClassType.isSameGenericClass(constraint, constructorTypeForConstraint) ||
-                            ClassType.isDerivedFrom(constructorTypeForConstraint, constraint))
-                );
-
-                if (!matchedConstraint) {
-                    if (!destType.shared.isSynthesized) {
-                        diag?.addMessage(
-                            LocAddendum.typeConstrainedTypeVar().format({
-                                type: printType(convertToInstance(srcType)),
-                                name: TypeVarType.getReadableName(destType),
-                            })
-                        );
-                    }
-                    return false;
-                }
-            }
-
-            const templateTypeVars = matchedConstraint?.priv.typeArgs ? getTypeVarArgsRecursive(matchedConstraint) : [];
-
-            if (
-                templateTypeVars.length > 0 &&
-                templateTypeVars.length === destType.priv.typeArgs.length &&
-                matchedConstraint &&
-                (ClassType.isSameGenericClass(matchedConstraint, constructorTypeForConstraint) ||
-                    ClassType.isDerivedFrom(constructorTypeForConstraint, matchedConstraint))
-            ) {
-                const expectedParamCount = matchedConstraint.shared.typeParams.length;
-                if (
-                    isClass(originalSrcClass) &&
-                    originalSrcClass.shared.typeParams.length > 0 &&
-                    originalSrcClass.shared.typeParams.length !== expectedParamCount
-                ) {
-                    diag?.addMessage(
-                        LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
-                            name: TypeVarType.getReadableName(constructorTypeVar),
-                            type: printType(srcType),
-                            expected: expectedParamCount,
-                            received: originalSrcClass.shared.typeParams.length,
-                        })
-                    );
-                    if (constructorTypeVar.shared.boundType) {
-                        diag?.addMessage(
-                            LocAddendum.typeVarConstructorBoundContext().format({
-                                name: TypeVarType.getReadableName(constructorTypeVar),
-                                bound: printType(constructorTypeVar.shared.boundType),
-                            })
-                        );
-                    } else if (constructorTypeVar.shared.constraints.length > 0) {
-                        diag?.addMessage(
-                            LocAddendum.typeVarConstructorConstraintContext().format({
-                                name: TypeVarType.getReadableName(constructorTypeVar),
-                                constraints: constructorTypeVar.shared.constraints.map((c) => printType(c)).join(', '),
-                            })
-                        );
-                    }
-                    if (originalSrcClass.shared.typeParams.length > expectedParamCount) {
-                        diag?.addMessage(
-                            LocAddendum.typeVarConstructorCannotPartiallyApply().format({
-                                name: TypeVarType.getReadableName(constructorTypeVar),
-                                type: printType(srcType),
-                            })
-                        );
-                    }
-                    return false;
-                }
-
-                // Specialize the matched constraint template using the applied type arguments
-                // and match it against the source type. E.g. Array[X] <- Array[IntScalar] binds X <- IntScalar.
-                const templateSolution = new ConstraintSolution();
-                for (let i = 0; i < templateTypeVars.length; i++) {
-                    templateSolution.setType(templateTypeVars[i], destType.priv.typeArgs[i]);
-                }
-                const specializedTemplate = applySolvedTypeVars(matchedConstraint!, templateSolution);
-                const templateToCheck = TypeBase.isInstantiable(srcType)
-                    ? convertToInstantiable(specializedTemplate)
-                    : convertToInstance(specializedTemplate);
-                const constraintsForTemplate = constraints;
-                const templateAssignSuccess = assignType(
-                    templateToCheck,
-                    effectiveSrcClass,
-                    diag,
-                    constraintsForTemplate,
-                    flags,
-                    recursionCount
-                );
-                if (!templateAssignSuccess) {
-                    return false;
-                }
-
-                // If any top-level type argument of the template is a bounded/constrained TypeVar (e.g. S in Array[S]),
-                // enforce that the corresponding argument from srcType satisfies that bound/constraint.
-                if (matchedConstraint?.priv.typeArgs && effectiveSrcClass.priv.typeArgs) {
-                    for (let i = 0; i < matchedConstraint.priv.typeArgs.length; i++) {
-                        const templateArg = matchedConstraint.priv.typeArgs[i];
-                        const srcTypeArg = effectiveSrcClass.priv.typeArgs[i];
-                        if (isTypeVar(templateArg) && srcTypeArg) {
-                            if (
-                                !assignType(
-                                    templateArg,
-                                    srcTypeArg,
-                                    diag,
-                                    /* constraints */ undefined,
-                                    flags,
-                                    recursionCount
-                                )
-                            ) {
-                                return false;
-                            }
-                        }
-                    }
-                }
-
-                if (constructorTypeVar.shared.constraints.length > 0) {
-                    constructorType = matchedConstraint!;
-                }
-            } else {
-                const srcTypeArgs = isClass(srcType) ? srcType.priv.typeArgs : undefined;
-                if (!srcTypeArgs || destType.priv.typeArgs.length !== srcTypeArgs.length) {
-                    return false;
-                }
-
-                for (let i = 0; i < destType.priv.typeArgs.length; i++) {
-                    const destTypeParam =
-                        isClass(srcType) && i < srcType.shared.typeParams.length
-                            ? srcType.shared.typeParams[i]
-                            : undefined;
-                    const destVariance = destTypeParam
-                        ? destTypeParam.priv.computedVariance ?? destTypeParam.shared.declaredVariance
-                        : Variance.Covariant;
-                    const variance =
-                        destVariance === Variance.Auto || destVariance === Variance.Unknown
-                            ? Variance.Covariant
-                            : destVariance;
-
-                    let effectiveFlags = flags;
-                    if (variance === Variance.Contravariant) {
-                        effectiveFlags |= AssignTypeFlags.Contravariant;
-                    } else if (variance === Variance.Invariant) {
-                        effectiveFlags |= AssignTypeFlags.Invariant;
-                    }
-
-                    const targetDest = variance === Variance.Contravariant ? srcTypeArgs[i] : destType.priv.typeArgs[i];
-                    const targetSrc = variance === Variance.Contravariant ? destType.priv.typeArgs[i] : srcTypeArgs[i];
-
-                    if (!assignType(targetDest, targetSrc, diag, constraints, effectiveFlags, recursionCount)) {
-                        return false;
-                    }
-                }
-
-                if (matchedConstraint && constructorTypeVar.shared.boundType) {
-                    const instantiableBound = TypeBase.isInstantiable(destType)
-                        ? convertToInstantiable(constructorTypeVar.shared.boundType)
-                        : convertToInstance(constructorTypeVar.shared.boundType);
-                    if (!assignType(instantiableBound, srcType, diag, constraints, flags, recursionCount)) {
-                        return false;
-                    }
-                }
-            }
-
-            const constraintSet = constraints?.getMainConstraintSet();
-            const existingConstraint = constraintSet?.getTypeVar(constructorTypeVar);
-            const existingConstructor = existingConstraint?.lowerBound ?? existingConstraint?.upperBound;
-
-            if (existingConstructor && !isTypeSame(existingConstructor, constructorType)) {
-                return false;
-            }
-
-            constraintSet?.setBounds(constructorTypeVar, constructorType, constructorType);
-            return true;
+            return assignTypeToAppliedTypeVar(destType, srcType, diag, constraints, flags, recursionCount);
         }
 
         if (isTypeVar(destType)) {
@@ -31483,60 +31575,7 @@ export function createTypeEvaluator(
         }
 
         if (TypeVarType.isConstructor(destType) && !isTypeVar(effectiveSrcType)) {
-            let isConstructor = false;
-            let typeParamCountMismatch: { expected: number; received: number } | undefined;
-            if (isClass(effectiveSrcType)) {
-                const aliasInfo = effectiveSrcType.props?.typeAliasInfo;
-                const received = aliasInfo?.shared.typeParams
-                    ? aliasInfo.shared.typeParams.length
-                    : effectiveSrcType.shared.typeParams.length;
-                const expected = destType.shared.typeParams.length;
-                if (received === expected) {
-                    isConstructor = true;
-                } else {
-                    typeParamCountMismatch = { expected, received };
-                }
-            }
-            if (!isConstructor) {
-                if (typeParamCountMismatch) {
-                    diag.addMessage(
-                        LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
-                            name: TypeVarType.getReadableName(destType),
-                            type: printType(effectiveSrcType),
-                            expected: typeParamCountMismatch.expected,
-                            received: typeParamCountMismatch.received,
-                        })
-                    );
-                    if (destType.shared.boundType) {
-                        diag.addMessage(
-                            LocAddendum.typeVarConstructorBoundContext().format({
-                                name: TypeVarType.getReadableName(destType),
-                                bound: printType(destType.shared.boundType),
-                            })
-                        );
-                    } else if (destType.shared.constraints.length > 0) {
-                        diag.addMessage(
-                            LocAddendum.typeVarConstructorConstraintContext().format({
-                                name: TypeVarType.getReadableName(destType),
-                                constraints: destType.shared.constraints.map((c) => printType(c)).join(', '),
-                            })
-                        );
-                    }
-                    if (typeParamCountMismatch.received > typeParamCountMismatch.expected) {
-                        diag.addMessage(
-                            LocAddendum.typeVarConstructorCannotPartiallyApply().format({
-                                name: TypeVarType.getReadableName(destType),
-                                type: printType(effectiveSrcType),
-                            })
-                        );
-                    }
-                } else {
-                    diag.addMessage(
-                        LocAddendum.typeNotGenericConstructor().format({
-                            type: printType(effectiveSrcType),
-                        })
-                    );
-                }
+            if (!validateConstructorArity(evaluatorInterface, destType, effectiveSrcType, diag)) {
                 return undefined;
             }
         }

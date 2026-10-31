@@ -1483,6 +1483,18 @@ export function isTupleClass(type: ClassType) {
     return ClassType.isBuiltIn(type, 'tuple');
 }
 
+// Indicates whether the type is a type constructor TypeVar that has been
+// applied to type arguments (e.g. `F[int]` where `F` is declared as `F[T]`).
+export function isAppliedConstructorTypeVar(type: Type): type is TypeVarType {
+    return isTypeVar(type) && type.priv.typeArgs !== undefined;
+}
+
+// Indicates whether the first parameter of the function (normally `cls`) is
+// annotated with an applied type constructor, as in `cls: type[D[T, S]]`.
+export function hasAppliedConstructorClsParam(type: FunctionType): boolean {
+    return type.shared.parameters.length > 0 && isAppliedConstructorTypeVar(FunctionType.getParamType(type, 0));
+}
+
 // Indicates whether the type is a tuple class of
 // the form tuple[x, ...] where the number of elements
 // in the tuple is unknown.
@@ -1643,6 +1655,32 @@ export function applySolvedTypeVars(type: Type, solution: ConstraintSolution, op
 
     const transformer = new ApplySolvedTypeVarsTransformer(solution, options);
     return transformer.apply(type, 0);
+}
+
+// Returns the type variables that parameterize a type constructor's bound or
+// constraint template. These are the constructor's inner type parameters when
+// declared explicitly (`F[T]: Box[T]`); otherwise they are the free type
+// variables of the template itself (`D: dict[T, S]`).
+export function getConstructorTemplateTypeVars(typeVar: TypeVarType, template: Type): TypeVarType[] {
+    return typeVar.shared.typeParams.length > 0 ? typeVar.shared.typeParams : getTypeVarArgsRecursive(template);
+}
+
+// Specializes `target` by substituting each template type variable with the
+// corresponding applied type argument, e.g. `Array[S]` with `[int]` yields
+// `Array[int]`. Returns undefined when the arities differ.
+export function specializeConstructorTemplate(
+    target: Type,
+    templateTypeVars: TypeVarType[],
+    appliedTypeArgs: Type[],
+    options?: ApplyTypeVarOptions
+): Type | undefined {
+    if (templateTypeVars.length === 0 || templateTypeVars.length !== appliedTypeArgs.length) {
+        return undefined;
+    }
+
+    const solution = new ConstraintSolution();
+    templateTypeVars.forEach((typeVar, index) => solution.setType(typeVar, appliedTypeArgs[index]));
+    return applySolvedTypeVars(target, solution, options);
 }
 
 // Validates that a default type associated with a TypeVar does not refer to
@@ -4562,44 +4600,37 @@ class ApplySolvedTypeVarsTransformer extends TypeVarTransformer {
                                     : typeVar.shared.constraints.find(
                                           (c): c is ClassType => isClassInstance(c) && !!c.priv.typeArgs
                                       );
-                            if (template?.priv.typeArgs) {
-                                const templateTypeVars = getTypeVarArgsRecursive(template);
-                                if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
-                                    const templateSolution = new ConstraintSolution();
-                                    for (let i = 0; i < templateTypeVars.length; i++) {
-                                        templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
-                                    }
-                                    const specializedTemplateArgs = template.priv.typeArgs.map((arg) =>
-                                        applySolvedTypeVars(arg, templateSolution)
-                                    );
-                                    if (
-                                        resolvedReplacement.shared.typeParams.length === specializedTemplateArgs.length
-                                    ) {
-                                        resolvedReplacement = ClassType.specialize(
-                                            resolvedReplacement,
-                                            specializedTemplateArgs,
-                                            /* isTypeArgExplicit */ undefined,
-                                            /* includeSubclasses */ true
-                                        );
-                                    } else {
-                                        resolvedReplacement = UnknownType.create();
-                                    }
-                                } else {
-                                    resolvedReplacement = UnknownType.create();
-                                }
+                            const specializedTemplate = template?.priv.typeArgs
+                                ? specializeConstructorTemplate(
+                                      template,
+                                      getTypeVarArgsRecursive(template),
+                                      appliedTypeArgs
+                                  )
+                                : undefined;
+                            if (
+                                specializedTemplate &&
+                                isClass(specializedTemplate) &&
+                                specializedTemplate.priv.typeArgs &&
+                                resolvedReplacement.shared.typeParams.length ===
+                                    specializedTemplate.priv.typeArgs.length
+                            ) {
+                                resolvedReplacement = ClassType.specialize(
+                                    resolvedReplacement,
+                                    specializedTemplate.priv.typeArgs,
+                                    /* isTypeArgExplicit */ undefined,
+                                    /* includeSubclasses */ true
+                                );
                             } else {
                                 resolvedReplacement = UnknownType.create();
                             }
                         }
                     } else {
-                        const templateTypeVars = getTypeVarArgsRecursive(resolvedReplacement);
-                        if (templateTypeVars.length > 0 && templateTypeVars.length === appliedTypeArgs.length) {
-                            const templateSolution = new ConstraintSolution();
-                            for (let i = 0; i < templateTypeVars.length; i++) {
-                                templateSolution.setType(templateTypeVars[i], appliedTypeArgs[i]);
-                            }
-                            resolvedReplacement = applySolvedTypeVars(resolvedReplacement, templateSolution);
-                        }
+                        resolvedReplacement =
+                            specializeConstructorTemplate(
+                                resolvedReplacement,
+                                getTypeVarArgsRecursive(resolvedReplacement),
+                                appliedTypeArgs
+                            ) ?? resolvedReplacement;
                     }
                 } else if (isTypeVar(resolvedReplacement)) {
                     const index = typeVar.shared.typeParams.findIndex(

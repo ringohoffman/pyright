@@ -82,6 +82,68 @@ const maxSubtypeCountForTypeVarLowerBound = 64;
 // after it is updated by the constraint solver.
 const logConstraintsUpdates = false;
 
+// Verifies that srcType is a generic class or type alias whose number of type
+// parameters matches the arity of the type constructor TypeVar destType. When
+// `expected` is supplied it overrides the arity taken from destType. Explanatory
+// addenda are recorded in diag on failure.
+export function validateConstructorArity(
+    evaluator: TypeEvaluator,
+    destType: TypeVarType,
+    srcType: Type,
+    diag: DiagnosticAddendum | undefined,
+    expected = destType.shared.typeParams.length
+): boolean {
+    if (!isClass(srcType)) {
+        diag?.addMessage(LocAddendum.typeNotGenericConstructor().format({ type: evaluator.printType(srcType) }));
+        return false;
+    }
+
+    const aliasInfo = srcType.props?.typeAliasInfo;
+    const received = aliasInfo?.shared.typeParams
+        ? aliasInfo.shared.typeParams.length
+        : srcType.shared.typeParams.length;
+    if (received === expected) {
+        return true;
+    }
+
+    const name = TypeVarType.getReadableName(destType);
+    diag?.addMessage(
+        LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
+            name,
+            type: evaluator.printType(srcType),
+            expected,
+            received,
+        })
+    );
+
+    if (destType.shared.boundType) {
+        diag?.addMessage(
+            LocAddendum.typeVarConstructorBoundContext().format({
+                name,
+                bound: evaluator.printType(destType.shared.boundType),
+            })
+        );
+    } else if (destType.shared.constraints.length > 0) {
+        diag?.addMessage(
+            LocAddendum.typeVarConstructorConstraintContext().format({
+                name,
+                constraints: destType.shared.constraints.map((c) => evaluator.printType(c)).join(', '),
+            })
+        );
+    }
+
+    if (received > expected) {
+        diag?.addMessage(
+            LocAddendum.typeVarConstructorCannotPartiallyApply().format({
+                name,
+                type: evaluator.printType(srcType),
+            })
+        );
+    }
+
+    return false;
+}
+
 // Assigns the source type to the dest type var in the type var context. If an existing
 // type is already associated with that type var name, it attempts to either widen or
 // narrow the type (depending on the value of the isContravariant parameter). The goal is
@@ -124,61 +186,8 @@ export function assignTypeVar(
         return true;
     }
 
-    if (TypeVarType.isConstructor(destType) && !destType.priv.typeArgs) {
-        let isConstructor = false;
-        let typeParamCountMismatch: { expected: number; received: number } | undefined;
-        if (isClass(srcType)) {
-            const aliasInfo = srcType.props?.typeAliasInfo;
-            const received = aliasInfo?.shared.typeParams
-                ? aliasInfo.shared.typeParams.length
-                : srcType.shared.typeParams.length;
-            const expected = destType.shared.typeParams.length;
-            if (received === expected) {
-                isConstructor = true;
-            } else {
-                typeParamCountMismatch = { expected, received };
-            }
-        }
-        if (!isConstructor && !isAnyOrUnknown(srcType)) {
-            if (typeParamCountMismatch) {
-                diag?.addMessage(
-                    LocAddendum.typeVarConstructorTypeParamCountMismatch().format({
-                        name: TypeVarType.getReadableName(destType),
-                        type: evaluator.printType(srcType),
-                        expected: typeParamCountMismatch.expected,
-                        received: typeParamCountMismatch.received,
-                    })
-                );
-                if (destType.shared.boundType) {
-                    diag?.addMessage(
-                        LocAddendum.typeVarConstructorBoundContext().format({
-                            name: TypeVarType.getReadableName(destType),
-                            bound: evaluator.printType(destType.shared.boundType),
-                        })
-                    );
-                } else if (destType.shared.constraints.length > 0) {
-                    diag?.addMessage(
-                        LocAddendum.typeVarConstructorConstraintContext().format({
-                            name: TypeVarType.getReadableName(destType),
-                            constraints: destType.shared.constraints.map((c) => evaluator.printType(c)).join(', '),
-                        })
-                    );
-                }
-                if (typeParamCountMismatch.received > typeParamCountMismatch.expected) {
-                    diag?.addMessage(
-                        LocAddendum.typeVarConstructorCannotPartiallyApply().format({
-                            name: TypeVarType.getReadableName(destType),
-                            type: evaluator.printType(srcType),
-                        })
-                    );
-                }
-            } else {
-                diag?.addMessage(
-                    LocAddendum.typeNotGenericConstructor().format({
-                        type: evaluator.printType(srcType),
-                    })
-                );
-            }
+    if (TypeVarType.isConstructor(destType) && !destType.priv.typeArgs && !isAnyOrUnknown(srcType)) {
+        if (!validateConstructorArity(evaluator, destType, srcType, diag)) {
             return false;
         }
     }

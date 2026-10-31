@@ -511,9 +511,13 @@ export class HoverProvider {
                 const nodeType = typeParamListNode?.parent?.nodeType;
                 const printTypeVarVariance = nodeType === ParseNodeType.Class || nodeType === ParseNodeType.TypeAlias;
 
+                // A type constructor parameter (`F[T]`) shows its inner parameters.
+                const innerParams = resolvedDecl.node.d.typeParams?.d.params.map((param) => param.d.name.d.value);
+                const label = innerParams ? `${node.d.value}[${innerParams.join(', ')}]` : node.d.value;
+
                 this._addResultsPart(
                     parts,
-                    '(type parameter) ' + node.d.value + this._getTypeText(node, { printTypeVarVariance }),
+                    '(type parameter) ' + label + this._getTypeText(node, { printTypeVarVariance }),
                     /* python */ true
                 );
                 this._addDocumentationPart(parts, node, resolvedDecl);

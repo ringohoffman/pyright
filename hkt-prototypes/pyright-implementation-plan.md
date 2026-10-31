@@ -355,6 +355,21 @@ under some conditions. PEP should specify; recommendation is **no widening** (co
 instance. Current code specializes the candidate with the applied args and `assignType`s against the protocol — that's
 right, but it's buried in the bound-matching loop. Make it a named case in `matchConstructorAgainstBound`.
 
+### 6.6 Open gaps found while drafting the specification (2026-10-31, probe against `0d649ae7b`)
+
+These are implementation items the spec text will take a position on. Each needs a sample + fix before the PR stack.
+
+| # | Probe | Current behavior | Spec position (proposed) |
+| --- | --- | --- | --- |
+| G1 | `def f[F[G[T]]](x: F[list])` | Accepted silently. | **Reject.** Inner type parameters are ordinary (kind ∗) parameters; nested constructor parameters are out of scope (see Rejected Ideas: arbitrary higher-order unification). Parser or `getTypeOfTypeParam` should report an error. |
+| G2 | `def f[F[T = int]](x: F[str])` | Accepted silently. | **Reject.** An inner parameter's default is never consulted (the parameter is always supplied by application). Report an error. |
+| G3 | `class Inv[F[T]]: x: F[int]` then `Inv[list]` → `Inv[Iterable]` | **Accepted** — constructor parameters are inferred covariant regardless of use. Same for a `put(self, v: F[int])` sink (should be contravariant). | Auto-variance applies to constructor parameters: variance is computed from the positions in which `F[...]` appears, exactly as for ordinary parameters. Needs a fix in `inferVarianceForClass` / `updateUsageVariancesRecursive` to walk `TypeVarType.priv.typeArgs` and attribute usage to the constructor TypeVar. Sample `hktVariance3`. |
+| G4 | `Wrap[list, int]`, `Sink[Iterable]` printing | Prints `Wrap[list[_T@list], int]` / `Sink[Iterable[_T_co@Iterable]]`. Assignability is correct; only the printer leaks the constructor's own type parameters. | Print a bare constructor argument as the bare class name (`Wrap[list, int]`). Fix in `typePrinter` when the corresponding type parameter `isConstructor`. |
+| G5 | `def f[F[T]](x: F)` | "Expected type arguments for generic class "F"". | Wording: add `typeArgsMissingForTypeConstructor` ("Type constructor "F" requires type arguments"). |
+
+Baselines confirmed on the same build: ordinary `V: list[U]` reports "constraint type cannot be generic"; ordinary
+invariant class params do error on widening; `F[T]: dict[U, T]` (outer `U`) correctly errors per §6.1.
+
 ---
 
 ## 7. PR preparation

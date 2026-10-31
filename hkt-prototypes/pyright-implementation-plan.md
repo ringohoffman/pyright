@@ -202,6 +202,18 @@ export function hasAppliedConstructorClsParam(fn: FunctionType): boolean
 Benchmark before/after with `build/perfCompare.py` on a large project (e.g. the pyright bundled typeshed checker run) —
 required because this path is the hottest in the evaluator.
 
+**Done.** `isMemberAppliedConstructorClassMethod` now runs only when the class is generic and unspecialized, and
+short-circuits on a syntactic check (declared first parameter has an annotation) before evaluating any types.
+
+Measured 2026-10-31 over `src/tests/samples` (1,484 files), 8 runs + 2 warmup, randomized interleaving:
+
+| Commit | Median paired delta vs `upstream/main` | 95% CI |
+| --- | --- | --- |
+| `77651b250` (pre-Phase-4 merge) | +43.5 ms (+0.96%) | ±555 ms |
+| `f2afb1c38` (Phase 4 complete) | −40.0 ms (−0.88%) | ±468 ms |
+
+Both are within noise. Re-run on a larger corpus before the upstream PR.
+
 ### 4.5 Consolidate template-specialization helpers
 
 `makeTopLevelTypeVarsConcrete` ([L4616–L4670](../packages/pyright-internal/src/analyzer/typeEvaluator.ts#L4616-L4670)),

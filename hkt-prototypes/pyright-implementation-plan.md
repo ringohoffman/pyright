@@ -381,14 +381,15 @@ Draft them alongside `hktUnification1.py` so the PEP's examples and pyright's sa
 
 ## Appendix: Current-state metrics (baseline for measuring progress)
 
-| Metric | Now | Target |
-| --- | --- | --- |
-| Analyzer diff lines | 1,640 | ≤ 1,200 |
-| `types.test.ts` lines | 3,405 | ≤ 400 |
-| Upstream test regressions | 11 | 0 |
-| Dead code paths | 6 symbols / ~150 lines | 0 |
-| `as any` casts | 2 | 0 |
-| HKT sample files | 35 (numbered) | ~16 (named by PEP section) |
-| Fourslash tests | 0 | ≥ 3 |
-| Version/feature gate | none | parser + evaluator |
-| Longest new function | ~400 lines (`assignType` branch) | ≤ 80 |
+| Metric | Baseline (2026-10-31 AM) | Now (`86cb39b55`) | Target |
+| --- | --- | --- | --- |
+| Analyzer diff lines | 1,640 | 1,368 | ≤ 1,200 |
+| `types.test.ts` lines | 3,405 | 292 | ≤ 400 |
+| Upstream test regressions | 11 | 0 | 0 |
+| Dead code paths | 6 symbols / ~150 lines | 0 | 0 |
+| `as any` casts | 2 | 0 | 0 |
+| HKT sample files | 35 (numbered) | 43 (35 numbered + 8 named) | ~16 (named by PEP section) — blocked on §6.2 |
+| Fourslash tests | 0 | 3 | ≥ 3 |
+| Version/feature gate | none | parser (3.16) | parser + evaluator |
+| Longest new function | ~400 lines (`assignType` branch) | ~110 (`assignTypeToAppliedTypeVar`) | ≤ 80 |
+| perfCompare vs `upstream/main` | unmeasured | −0.88% (noise) | within noise |

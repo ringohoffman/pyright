@@ -19,7 +19,7 @@ class BidirectionalMapping[KT, VT](Mapping[KT, VT]):
     def __iter__(self) -> Iterator[KT]:
         raise NotImplementedError
 
-    def inverse[MapT: BidirectionalMapping[KT, VT]](self: MapT[KT, VT]) -> MapT[VT, KT]:
+    def inverse[MapT[K, V]: BidirectionalMapping[K, V]](self: MapT[KT, VT]) -> MapT[VT, KT]:
         raise NotImplementedError
 
 

@@ -310,6 +310,20 @@ pnpm run test:norebuild            # full run before PR
 
 Decide these before Phase 4 so the extraction targets the final semantics.
 
+**Decided 2026-10-31:**
+
+| # | Decision | Consequence |
+| --- | --- | --- |
+| 6.1 | **Drop the implicit form.** A type constructor parameter is declared only by subscripting its name: `F[T]`. `D: dict[T, S]` with no inner list is an ordinary TypeVar and `T`/`S` must be in scope as usual (so this is the existing "bound cannot be generic" error). | Remove `inferImplicitConstructorParams`. A bound/constraint may reference only the parameter's own inner type parameters. |
+| 6.2 | **Drop legacy `TypeVar(...)` support.** PEP 695 syntax only; a `typing_extensions` backport is out of scope for v1. | Remove the legacy branch of `isAllowedTypeVarTemplateConstraint` and the `allowTypeVarsWithoutScopeId` relaxations in `createTypeVarType`; delete legacy-only samples. |
+| 6.3 | **Unsolved `F[int]` → `Unknown`.** Consistent with ordinary unsolved TypeVars. | No code change; already pinned by a unit test. |
+| 6.4 | **Conflicting solutions are an error.** All occurrences of `F` must solve to the same class; no join. | No code change. |
+| 6.5 | **Protocol bounds are checked once, universally.** `F` satisfies `B[T]` iff `F[T] <: B[T]` with the inner parameter `T` free — not per application. | Change the protocol branch of `matchConstructorAgainstBound` to specialize the candidate with the inner params rather than the applied args. |
+
+PEP text to update: Terminology §"Type Constructor Parameters" (remove the `D: dict[T, S]` spelling), the `dict.fromkeys`
+and `bidict.inverse` motivating examples (use `D[K, V]: dict[K, V]` / `M[K, V]: BidirectionalMapping[K, V]`), and
+§"Compatibility with Traditional `TypeVar`" (state that it is not supported).
+
 ### 6.1 Is the implicit spelling (`D: dict[T, S]`) a separate declaration form or sugar?
 
 - **Sugar (recommended):** declaration-time normalization sets `shared.typeParams = [T, S]`; everything else is the

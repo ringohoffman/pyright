@@ -241,7 +241,6 @@ import {
 } from './typeEvaluatorTypes';
 import { enumerateLiteralsForType } from './typeGuards';
 import * as TypePrinter from './typePrinter';
-import { TypeWalker } from './typeWalker';
 import {
     AnyType,
     ClassType,
@@ -328,6 +327,7 @@ import {
     doForEachSubtype,
     ensureSignaturesAreUnique,
     explodeGenericClass,
+    getConstructorTemplateTypeVars,
     getContainerDepth,
     getDeclaredGeneratorReturnType,
     getGeneratorTypeArgs,
@@ -340,7 +340,6 @@ import {
     getUnknownForTypeVar,
     getUnknownTypeForCallable,
     hasAppliedConstructorClsParam,
-    getConstructorTemplateTypeVars,
     InferenceContext,
     invertVariance,
     isDescriptorInstance,
@@ -399,6 +398,7 @@ import {
     UniqueSignatureTracker,
     validateTypeVarDefault,
 } from './typeUtils';
+import { TypeWalker } from './typeWalker';
 
 import {
     AutomaticOverloadSelection,
@@ -14915,64 +14915,17 @@ export function createTypeEvaluator(
         return { isCompatible, argType, isTypeIncomplete, skippedBareTypeVarExpectedType, condition };
     }
 
-    function isAllowedTypeVarTemplateConstraint(type: Type, contextNode?: ParseNode, isPep695 = false): boolean {
-        if (isTypeVar(type)) {
-            if (isPep695) {
-                if (contextNode) {
-                    const liveScopeIds = getTypeVarScopesForNode(contextNode);
-                    return (
-                        liveScopeIds.includes(type.priv.scopeId ?? '') ||
-                        (type.priv.scopeId?.startsWith('module.') ?? false)
-                    );
-                }
-                return true;
-            }
-
-            // Legacy TypeVar(...) call:
-            // Generic constructor templates are only valid when defined at module scope
-            // and referencing module-scoped / unscoped TypeVars.
-            if (contextNode && ParseTreeUtils.getEnclosingClassOrFunction(contextNode)) {
-                return false;
-            }
-
-            if (!type.priv.scopeId) {
-                return true;
-            }
-
-            return type.priv.scopeId.startsWith('module.');
-        }
-
-        if (isAnyOrUnknown(type) || isNever(type) || isNoneTypeClass(type) || isNoneInstance(type)) {
-            return true;
-        }
-
-        if (isClass(type)) {
-            if (type.priv.typeArgs) {
-                return type.priv.typeArgs.every((typeArg) =>
-                    isAllowedTypeVarTemplateConstraint(typeArg, contextNode, isPep695)
-                );
-            }
-
-            if (type.priv.tupleTypeArgs) {
-                return type.priv.tupleTypeArgs.every((typeArg) =>
-                    isAllowedTypeVarTemplateConstraint(typeArg.type, contextNode, isPep695)
-                );
-            }
-
-            if (type.shared.typeParams.length === 0) {
-                return true;
-            }
-
+    // A bound or constraint of a type constructor parameter may reference the
+    // parameter's own inner type parameters (the T in `F[T]: Iterable[T]`), but no
+    // other type variables.
+    function isTemplateReferencingOnlyInnerParams(type: Type, innerParams: TypeVarType[]): boolean {
+        if (innerParams.length === 0) {
             return false;
         }
 
-        if (isUnion(type)) {
-            return type.priv.subtypes.every((subtype) =>
-                isAllowedTypeVarTemplateConstraint(subtype, contextNode, isPep695)
-            );
-        }
-
-        return false;
+        return getTypeVarArgsRecursive(type).every((typeVar) =>
+            innerParams.some((innerParam) => isTypeVarSame(innerParam, typeVar))
+        );
     }
 
     function createTypeVarType(errorNode: ExpressionNode, classType: ClassType, argList: Arg[]): Type | undefined {
@@ -15027,7 +14980,6 @@ export function createTypeEvaluator(
                         const argType =
                             argList[i].typeResult?.type ??
                             getTypeOfExpressionExpectingType(argList[i].valueExpression!, {
-                                allowTypeVarsWithoutScopeId: true,
                                 noNonTypeSpecialForms: true,
                                 typeExpression: true,
                                 parsesStringLiteral: true,
@@ -15036,8 +14988,7 @@ export function createTypeEvaluator(
                             requiresSpecialization(argType, {
                                 ignorePseudoGeneric: true,
                                 ignoreImplicitTypeArgs: true,
-                            }) &&
-                            !isAllowedTypeVarTemplateConstraint(argType, argList[i].valueExpression || errorNode)
+                            })
                         ) {
                             addDiagnostic(
                                 DiagnosticRule.reportGeneralTypeIssues,
@@ -15135,14 +15086,10 @@ export function createTypeEvaluator(
                     const argType =
                         argList[i].typeResult?.type ??
                         getTypeOfExpressionExpectingType(argList[i].valueExpression!, {
-                            allowTypeVarsWithoutScopeId: true,
                             typeExpression: true,
                         }).type;
 
-                    if (
-                        requiresSpecialization(argType, { ignorePseudoGeneric: true }) &&
-                        !isAllowedTypeVarTemplateConstraint(argType, argList[i].valueExpression || errorNode)
-                    ) {
+                    if (requiresSpecialization(argType, { ignorePseudoGeneric: true })) {
                         addDiagnostic(
                             DiagnosticRule.reportGeneralTypeIssues,
                             LocMessage.typeVarConstraintGeneric(),
@@ -15164,8 +15111,6 @@ export function createTypeEvaluator(
                 firstConstraintArg.valueExpression || errorNode
             );
         }
-
-        inferImplicitConstructorParams(typeVar);
 
         // If a default is provided, make sure it is compatible with the bound
         // or constraint.
@@ -25120,42 +25065,6 @@ export function createTypeEvaluator(
         return defaultType;
     }
 
-    // A TypeVar declared without inner type parameters but bounded by a class applied
-    // to type variables (e.g. `D: dict[T, S]`) is a type constructor whose arity is the
-    // free type variables of its bound or constraints. This must be decided once at
-    // declaration time so that TypeVarDetailsShared is never mutated during evaluation.
-    function inferImplicitConstructorParams(typeVar: TypeVarType) {
-        if (
-            typeVar.shared.kind !== TypeVarKind.TypeVar ||
-            typeVar.shared.typeParams.length > 0 ||
-            typeVar.shared.isSynthesized ||
-            TypeVarType.isSelf(typeVar)
-        ) {
-            return;
-        }
-
-        const templates = typeVar.shared.boundType ? [typeVar.shared.boundType] : typeVar.shared.constraints;
-        let freeTypeVars: TypeVarType[] | undefined;
-
-        // Every bound or constraint must be parameterized by the same free type
-        // variables; otherwise the TypeVar has no well-defined arity.
-        for (const template of templates) {
-            const templateTypeVars = getTypeVarArgsRecursive(template).filter((tv) => !isTypeVarSame(tv, typeVar));
-            if (!freeTypeVars) {
-                freeTypeVars = templateTypeVars;
-            } else if (
-                templateTypeVars.length !== freeTypeVars.length ||
-                !templateTypeVars.every((tv, index) => isTypeVarSame(tv, freeTypeVars![index]))
-            ) {
-                return;
-            }
-        }
-
-        if (freeTypeVars && freeTypeVars.length > 0) {
-            typeVar.shared.typeParams = freeTypeVars;
-        }
-    }
-
     function verifyConstructorInnerParamsUsed(
         typeVar: TypeVarType,
         boundOrConstraintType: Type,
@@ -25249,7 +25158,7 @@ export function createTypeEvaluator(
                             ignorePseudoGeneric: true,
                             ignoreImplicitTypeArgs: true,
                         }) &&
-                        !isAllowedTypeVarTemplateConstraint(constraintType, node, /* isPep695 */ true)
+                        !isTemplateReferencingOnlyInnerParams(constraintType, typeVar.shared.typeParams)
                     ) {
                         addDiagnostic(
                             DiagnosticRule.reportGeneralTypeIssues,
@@ -25281,7 +25190,7 @@ export function createTypeEvaluator(
 
                 if (
                     requiresSpecialization(boundType, { ignorePseudoGeneric: true }) &&
-                    !isAllowedTypeVarTemplateConstraint(boundType, node, /* isPep695 */ true)
+                    !isTemplateReferencingOnlyInnerParams(boundType, typeVar.shared.typeParams)
                 ) {
                     addDiagnostic(
                         DiagnosticRule.reportGeneralTypeIssues,
@@ -25297,8 +25206,6 @@ export function createTypeEvaluator(
                 }
             }
         }
-
-        inferImplicitConstructorParams(typeVar);
 
         if (node.d.typeParamKind === TypeParamKind.ParamSpec) {
             const defaultType = node.d.defaultExpr
@@ -27523,9 +27430,12 @@ export function createTypeEvaluator(
                     matched = boundSubtype;
                 }
             } else if (ClassType.isProtocolClass(boundSubtype)) {
-                // Structural bound: apply the constructor to the template's (or the
-                // applied) type arguments and check it against the protocol.
-                const typeArgsForCandidate = boundSubtype.priv.typeArgs ?? destType.priv.typeArgs;
+                // Structural bound: the constructor satisfies `B[T]` iff `C[T] <: B[T]`
+                // with the inner parameter `T` left free, so the check is made once for
+                // all applications rather than per applied type argument.
+                const typeArgsForCandidate =
+                    boundSubtype.priv.typeArgs ??
+                    (constructor.shared.typeParams.length > 0 ? constructor.shared.typeParams : undefined);
                 const specializedCandidate = typeArgsForCandidate
                     ? ClassType.specialize(constructor, typeArgsForCandidate)
                     : constructor;
@@ -27534,7 +27444,7 @@ export function createTypeEvaluator(
                         boundSubtype,
                         specializedCandidate,
                         /* diag */ undefined,
-                        constraints,
+                        /* constraints */ undefined,
                         flags,
                         recursionCount
                     )

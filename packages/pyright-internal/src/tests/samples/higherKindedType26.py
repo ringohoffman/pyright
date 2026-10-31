@@ -15,7 +15,7 @@ class TupleBox[A, B](Box[A]):
 # -------------------------------------------------------------
 # 1. Non-overloaded HKT constructor parameter
 # -------------------------------------------------------------
-def accepts_unary_hkt[T, Constructor: (Box[T], OtherBox[T])](value: Constructor[int]) -> Constructor[int]:
+def accepts_unary_hkt[Constructor[X]: (Box[X], OtherBox[X])](value: Constructor[int]) -> Constructor[int]:
     raise NotImplementedError
 
 tb_two: TupleBox[int, int] = TupleBox()
@@ -29,7 +29,7 @@ accepts_unary_hkt(tb_two)
 # 2. Overloaded HKT constructor function
 # -------------------------------------------------------------
 @overload
-def overloaded_unary_hkt[T, Constructor: (Box[T], OtherBox[T])](value: Constructor[int]) -> Constructor[int]: ...
+def overloaded_unary_hkt[Constructor[X]: (Box[X], OtherBox[X])](value: Constructor[int]) -> Constructor[int]: ...
 @overload
 def overloaded_unary_hkt(value: str) -> str: ...
 def overloaded_unary_hkt(value: Any) -> Any:
@@ -44,7 +44,7 @@ overloaded_unary_hkt(tb_two)
 class mock_frozendict[KT, VT]:
     # Overload 1: SelfT expects 1 type parameter because key is fixed to str
     @overload
-    def __new__[V, SelfT: mock_frozendict[str, V]](
+    def __new__[V, SelfT[X]: mock_frozendict[str, X]](
         cls: type[SelfT[V]],
         /,
         **kwargs: V,
@@ -52,7 +52,7 @@ class mock_frozendict[KT, VT]:
 
     # Overload 2: SelfT expects 2 type parameters
     @overload
-    def __new__[K, V, SelfT: mock_frozendict[K, V]](
+    def __new__[K, V, SelfT[X, Y]: mock_frozendict[X, Y]](
         cls: type[SelfT[K, V]],
         iterable: list[tuple[K, V]],
         /,

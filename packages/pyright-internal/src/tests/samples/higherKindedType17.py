@@ -10,13 +10,13 @@ class Field[GT]:
 
 
 # Case 1: Fixed-dtype subclasses match through generic base constructor Field.
-def make_field[GT, FieldT: Field[GT]](
+def make_field[GT, FieldT[X]: Field[X]](
     cls: type[FieldT[GT]], null: Literal[False] = False
 ) -> FieldT[GT]:
     raise NotImplementedError
 
 
-def make_field_nullable[GT, FieldT: Field[GT]](
+def make_field_nullable[GT, FieldT[X]: Field[X]](
     cls: type[FieldT[GT]], null: Literal[True]
 ) -> FieldT[GT | None]:
     raise NotImplementedError
@@ -78,11 +78,11 @@ reveal_type(User3().f2, expected_text="str | None")
 # Case 4: Re-parameterized method signature on generic base class.
 class BaseField2[GT]:
     @overload
-    def __new__[F: BaseField2[GT]](
+    def __new__[F[X]: BaseField2[X]](
         cls: type[F[GT]], null: Literal[False] = False, *args: Any, **kwargs: Any
     ) -> F[GT]: ...
     @overload
-    def __new__[F: BaseField2[GT]](
+    def __new__[F[X]: BaseField2[X]](
         cls: type[F[GT]], null: Literal[True], *args: Any, **kwargs: Any
     ) -> F[GT | None]: ...
     def __new__(cls: Any, null: Any = False, *args: Any, **kwargs: Any) -> Any: ...

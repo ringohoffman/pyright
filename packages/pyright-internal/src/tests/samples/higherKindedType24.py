@@ -50,20 +50,10 @@ def find_one[IDT, MongoModelT[T]: MongoModel[T]](
     raise NotImplementedError
 
 
-# Clean definition with outer template bound:
-def find_one_2[IDT, MongoModelT: MongoModel[IDT]](
-    model_cls: type[MongoModelT[IDT]], id: IDT
-) -> MongoModelT[IDT]:
-    raise NotImplementedError
-
-
 # Generic model matching succeeds:
 reveal_type(find_one(SpecialMongoModel, 1), expected_text="SpecialMongoModel[int]")
-reveal_type(find_one_2(SpecialMongoModel, 1), expected_text="SpecialMongoModel[int]")
 
 # Non-generic User cannot match higher-kinded MongoModelT[IDT].
 # The call generates an error and the return type falls back to Unknown without leaking MongoModelT:
 # This should generate an error:
 reveal_type(find_one(User, ObjectId()), expected_text="Unknown")
-# This should generate an error:
-reveal_type(find_one_2(User, ObjectId()), expected_text="Unknown")

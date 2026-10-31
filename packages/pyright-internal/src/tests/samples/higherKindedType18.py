@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TypeVar, reveal_type
+from typing import reveal_type
 
 
 class Animal:
@@ -36,10 +36,8 @@ class UnrelatedContainer[T]:
     pass
 
 
-# Case 1: PEP 695 producer container constructor variance
-def process_producer[T, F: BaseProducer[T], U](
-    value: F[T], new_val_type: type[U]
-) -> F[U]:
+# Case 1: Producer container constructor variance
+def process_producer[T, U, F[X]: BaseProducer[X]](value: F[T], new_val_type: type[U]) -> F[U]:
     raise NotImplementedError
 
 
@@ -51,15 +49,13 @@ reveal_type(sub1, expected_text="SubProducer[str]")
 base1 = process_producer(BaseProducer[Dog](), str)
 reveal_type(base1, expected_text="BaseProducer[str]")
 
-# 1c. Passing UnrelatedContainer violates container bound BaseProducer[T]
+# 1c. Passing UnrelatedContainer violates container bound BaseProducer[X]
 # This should generate an error because UnrelatedContainer does not derive from BaseProducer.
 process_producer(UnrelatedContainer[Dog](), str)
 
 
 # Case 2: Sink container constructor variance
-def process_sink[T, F: BaseSink[T], U](
-    value: F[T], new_val_type: type[U]
-) -> F[U]:
+def process_sink[T, U, F[X]: BaseSink[X]](value: F[T], new_val_type: type[U]) -> F[U]:
     raise NotImplementedError
 
 
@@ -68,25 +64,3 @@ reveal_type(sink1, expected_text="SpecificSink[int]")
 
 # This should generate an error because UnrelatedContainer does not derive from BaseSink.
 process_sink(UnrelatedContainer[Animal](), int)
-
-
-# Case 3: Legacy TypeVar container constructor variance
-T_legacy = TypeVar("T_legacy")
-U_legacy = TypeVar("U_legacy")
-F_legacy = TypeVar("F_legacy", bound=BaseProducer[T_legacy])
-
-
-def process_producer_legacy(
-    value: F_legacy[T_legacy], new_val_type: type[U_legacy]
-) -> F_legacy[U_legacy]:
-    raise NotImplementedError
-
-
-sub2 = process_producer_legacy(SubProducer[Dog](), str)
-reveal_type(sub2, expected_text="SubProducer[str]")
-
-base2 = process_producer_legacy(BaseProducer[Dog](), str)
-reveal_type(base2, expected_text="BaseProducer[str]")
-
-# This should generate an error because UnrelatedContainer does not derive from BaseProducer.
-process_producer_legacy(UnrelatedContainer[Dog](), str)

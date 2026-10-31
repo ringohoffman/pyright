@@ -1,4 +1,4 @@
-# This sample tests PEP 695 constraints over generic constructor origins.
+# This sample tests PEP 695 bounds over generic constructor origins.
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class Other[T]:
     pass
 
 
-def transform[A, B, ContainerT: Container[A]](value: ContainerT[A], new_value_type: type[B]) -> ContainerT[B]:
+def transform[A, B, ContainerT[X]: Container[X]](value: ContainerT[A], new_value_type: type[B]) -> ContainerT[B]:
     raise NotImplementedError
 
 
@@ -26,4 +26,3 @@ reveal_type(special_container, expected_text="SpecialContainer[str]")
 
 # This should generate an error because Other does not derive from Container.
 transform(Other[int](), str)
-

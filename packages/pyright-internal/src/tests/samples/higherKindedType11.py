@@ -1,8 +1,8 @@
-# This sample tests bounds declared by constructor template parameters.
+# This sample tests PEP 695 bounds declared by constructor template parameters.
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar, reveal_type
+from typing import reveal_type
 
 
 class Scalar:
@@ -17,27 +17,20 @@ class NotScalar:
     pass
 
 
-S = TypeVar("S", bound=Scalar)
-T = TypeVar("T")
-
-
-class Array(Generic[T]):
+class Array[T]:
     pass
 
 
-class ChunkedArray(Generic[T]):
+class ChunkedArray[T]:
     pass
 
 
-F = TypeVar("F", Array[S], ChunkedArray[S])
-
-
-def preserve(value: F[S]) -> F[S]:
+def preserve[S: Scalar, F[X: Scalar]: (Array[X], ChunkedArray[X])](value: F[S]) -> F[S]:
     raise NotImplementedError
 
 
 valid = preserve(Array[IntScalar]())
 reveal_type(valid, expected_text="Array[IntScalar]")
 
-# This should generate an error because NotScalar violates the template parameter bound S.
+# This should generate an error because NotScalar violates the template parameter bound.
 preserve(Array[NotScalar]())

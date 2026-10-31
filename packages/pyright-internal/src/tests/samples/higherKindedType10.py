@@ -1,8 +1,8 @@
-# This sample tests legacy applied-template constraints.
+# This sample tests PEP 695 applied-template constraints.
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar, reveal_type
+from typing import reveal_type
 
 
 class DataType:
@@ -17,10 +17,7 @@ class StringType(DataType):
     pass
 
 
-D_co = TypeVar("D_co", bound=DataType, covariant=True)
-
-
-class Scalar(Generic[D_co]):
+class Scalar[D: DataType]:
     pass
 
 
@@ -28,23 +25,17 @@ class IntScalar(Scalar[IntType]):
     pass
 
 
-S_co = TypeVar("S_co", bound=Scalar[DataType], covariant=True)
-D = TypeVar("D", bound=DataType)
-
-
-class Array(Generic[S_co]):
+class Array[S: Scalar[DataType]]:
     pass
 
 
-class ChunkedArray(Generic[S_co]):
+class ChunkedArray[S: Scalar[DataType]]:
     pass
 
 
-ArrayT = TypeVar("ArrayT", Array[Scalar[D]], ChunkedArray[Scalar[D]])
-B = TypeVar("B", bound=DataType)
-
-
-def cast(value: ArrayT[DataType], target_type: type[B]) -> ArrayT[B]:
+def cast[F[D: DataType]: (Array[Scalar[D]], ChunkedArray[Scalar[D]]), B: DataType](
+    value: F[DataType], target_type: type[B]
+) -> F[B]:
     raise NotImplementedError
 
 

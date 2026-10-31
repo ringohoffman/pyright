@@ -2,27 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
 
-T_co = TypeVar("T_co", covariant=True)
-
-
-class Array(Generic[T_co]):
+class Array[T]:
     pass
 
 
-class ChunkedArray(Generic[T_co]):
+class ChunkedArray[T]:
     pass
-
-
-Bounded = TypeVar("Bounded", bound=Array[object] | ChunkedArray[object])
 
 
 # This should generate an error because Bounded is an ordinary TypeVar with an applied bound.
-def rejects_applied_bound(value: Bounded[int]) -> None:
-    pass
-
-
-# This should generate an error for the same reason under PEP 695 syntax.
-def rejects_applied_bound_pep695[Bounded: Array[object] | ChunkedArray[object]](value: Bounded[int]) -> None:
+def rejects_applied_bound[Bounded: Array[object] | ChunkedArray[object]](value: Bounded[int]) -> None:
     pass

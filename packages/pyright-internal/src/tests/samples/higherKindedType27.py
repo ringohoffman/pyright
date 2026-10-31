@@ -14,7 +14,7 @@ class SubMap[K, V](MyMap[K, V]):
     pass
 
 # Case A1: Fixing the first parameter (K=str), currying on the second (V)
-def make_str_map[V, M: MyMap[str, V]](cls: type[M[V]], value: V) -> M[V]:
+def make_str_map[V, M[X]: MyMap[str, X]](cls: type[M[V]], value: V) -> M[V]:
     raise NotImplementedError
 
 m1 = make_str_map(MyMap, 42)
@@ -25,7 +25,7 @@ reveal_type(m2, expected_text="SubMap[str, int]")
 
 
 # Case A2: Fixing the second parameter (V=int), currying on the first (K)
-def make_int_val_map[K, M: MyMap[K, int]](cls: type[M[K]], key: K) -> M[K]:
+def make_int_val_map[K, M[X]: MyMap[X, int]](cls: type[M[K]], key: K) -> M[K]:
     raise NotImplementedError
 
 m3 = make_int_val_map(MyMap, "hello")
@@ -46,7 +46,7 @@ class SubTriad[A, B, C](Triad[A, B, C]):
     pass
 
 # Fixing A=int, B=str, leaving C free (arity 1)
-def make_triad_c[C, T: Triad[int, str, C]](cls: type[T[C]], item: C) -> T[C]:
+def make_triad_c[C, T[X]: Triad[int, str, X]](cls: type[T[C]], item: C) -> T[C]:
     raise NotImplementedError
 
 t1 = make_triad_c(Triad, True)
@@ -66,7 +66,7 @@ class UnaryBox[T]:
 class BinaryBox[A, B]:
     pass
 
-def expects_unary[T, F: UnaryBox[T]](val: F[int]) -> F[int]:
+def expects_unary[F[X]: UnaryBox[X]](val: F[int]) -> F[int]:
     raise NotImplementedError
 
 # This should generate an error:
@@ -80,10 +80,10 @@ expects_unary(b_two)
 # Category D: Arity Mismatch on Template-Curried Constructor
 # ==============================================================================
 
-# DictT: MyMap[str, V] has 1 free variable (V).
+# DictT[X]: MyMap[str, X] has arity 1.
 # Subscripting DictT with 2 arguments should generate an error:
 # Too many type arguments provided for "DictT"; expected 1 but received 2
-def invalid_curried_subscript[V, DictT: MyMap[str, V]](
+def invalid_curried_subscript[DictT[X]: MyMap[str, X]](
     cls: type[DictT[int, str]]
 ) -> None:
     pass

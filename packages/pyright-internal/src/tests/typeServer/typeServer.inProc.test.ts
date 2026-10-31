@@ -310,17 +310,14 @@ describe('TypeServer in-proc protocol', () => {
 
     test('getDeclaredType preserves applied TypeVar arguments', async () => {
         const code = `
+// @filename: pyrightconfig.json
+//// { "pythonVersion": "3.16" }
+
 // @filename: main.py
-//// from __future__ import annotations
-//// from typing import Generic, TypeVar
-////
-//// T = TypeVar("T")
-//// class Box(Generic[T]):
+//// class Box[T]:
 ////     pass
 ////
-//// F = TypeVar("F", bound=Box[T])
-////
-//// def func(value: [|/*type*/F[int]|]) -> None:
+//// def func[F[X]: Box[X]](value: [|/*type*/F[int]|]) -> None:
 ////     pass
 `;
 

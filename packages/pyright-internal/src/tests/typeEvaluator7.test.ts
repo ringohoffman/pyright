@@ -324,13 +324,15 @@ test('GenericType47', () => {
 test('HigherKindedType1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType1.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 4);
+    // 4 -> 2: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('HigherKindedType2', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType2.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 2);
+    // 2 -> 1: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 1);
 });
 
 test('HigherKindedType3', () => {
@@ -348,7 +350,8 @@ test('HigherKindedType4', () => {
 test('HigherKindedType5', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType5.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 2);
+    // 2 -> 1: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 1);
 });
 
 test('HigherKindedType6', () => {
@@ -364,49 +367,29 @@ test('HigherKindedType7', () => {
 });
 
 test('HigherKindedType8', () => {
+    // Renamed from higherKindedType8Pep695.py; the legacy-only higherKindedType8.py was deleted.
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType8.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 2);
-});
-
-test('HigherKindedType8Pep695', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType8Pep695.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 4);
 });
 
 test('HigherKindedType9', () => {
+    // Renamed from higherKindedType9Pep695.py; the legacy-only higherKindedType9.py was deleted.
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType9.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 4);
 });
 
-test('HigherKindedType9Pep695', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType9Pep695.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 4);
-});
-
 test('HigherKindedType10', () => {
+    // Renamed from higherKindedType10Pep695.py; the legacy-only higherKindedType10.py was deleted.
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType10.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedType10Pep695', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType10Pep695.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
 test('HigherKindedType11', () => {
+    // Renamed from higherKindedType11Pep695.py; the legacy-only higherKindedType11.py was deleted.
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType11.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 1);
-});
-
-test('HigherKindedType11Pep695', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType11Pep695.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 1);
 });
@@ -414,13 +397,15 @@ test('HigherKindedType11Pep695', () => {
 test('HigherKindedType12', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType12.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 4);
+    // 4 -> 2: legacy TypeVar(...) cases removed.
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('HigherKindedType13', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType13.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 8);
+    // 8 -> 4: legacy TypeVar(...) cases removed.
+    TestUtils.validateResults(analysisResults, 4);
 });
 
 test('HigherKindedType14', () => {
@@ -432,7 +417,8 @@ test('HigherKindedType14', () => {
 test('HigherKindedType15', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType15.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 2);
+    // 2 -> 1: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 1);
 });
 
 test('HigherKindedType16', () => {
@@ -450,13 +436,15 @@ test('HigherKindedType17', () => {
 test('HigherKindedType18', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType18.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 3);
+    // 3 -> 2: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('HigherKindedType19', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType19.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 2);
+    // 2 -> 1: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 1);
 });
 
 test('HigherKindedType20', () => {
@@ -486,7 +474,8 @@ test('HigherKindedType23', () => {
 test('HigherKindedType24', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType24.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 3);
+    // 3 -> 2: implicit-spelling variant (find_one_2) removed.
+    TestUtils.validateResults(analysisResults, 2);
 });
 
 test('HigherKindedType25', () => {

@@ -6,8 +6,8 @@ from collections import OrderedDict
 from typing import Any
 
 
-# D has arity 1 (only T is free); the value type is fixed to Any.
-def keys_of[T, D: dict[T, Any]](mapping: D[T]) -> D[T]:
+# D has arity 1 (only X is free); the value type is fixed to Any.
+def keys_of[T, D[X]: dict[X, Any]](mapping: D[T]) -> D[T]:
     return mapping
 
 
@@ -19,7 +19,7 @@ reveal_type(keys_of(od1), expected_text="OrderedDict[str, Any]")
 
 
 # A bound that fixes the key type: M has arity 1 over the value type.
-def values_of[V, M: dict[str, V]](mapping: M[V]) -> M[V]:
+def values_of[V, M[X]: dict[str, X]](mapping: M[V]) -> M[V]:
     return mapping
 
 
@@ -32,4 +32,4 @@ values_of(d1)
 
 
 # This should generate an error because D has arity 1.
-def too_many[T, D: dict[T, Any]](mapping: D[T, T]) -> None: ...
+def too_many[T, D[X]: dict[X, Any]](mapping: D[T, T]) -> None: ...

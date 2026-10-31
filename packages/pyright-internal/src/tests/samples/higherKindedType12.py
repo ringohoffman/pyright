@@ -30,26 +30,19 @@ class Consumer(Generic[T_contra]):
     pass
 
 
-T = TypeVar("T")
-ProducerF = TypeVar("ProducerF", bound=Producer[T])
-BoxF = TypeVar("BoxF", bound=Box[T])
-ConsumerF = TypeVar("ConsumerF", bound=Consumer[T])
-ConsumerAnimalF = TypeVar("ConsumerAnimalF", bound=Consumer[T])
-
-
-def accepts_producer(value: ProducerF[Animal]) -> None:
+def accepts_producer[F[X]: Producer[X]](value: F[Animal]) -> None:
     pass
 
 
-def accepts_box(value: BoxF[Animal]) -> None:
+def accepts_box[F[X]: Box[X]](value: F[Animal]) -> None:
     pass
 
 
-def accepts_consumer(value: ConsumerF[Dog]) -> None:
+def accepts_consumer[F[X]: Consumer[X]](value: F[Dog]) -> None:
     pass
 
 
-def accepts_consumer_animal(value: ConsumerAnimalF[Animal]) -> None:
+def accepts_consumer_animal[F[X]: Consumer[X]](value: F[Animal]) -> None:
     pass
 
 
@@ -62,30 +55,3 @@ accepts_consumer(Consumer[Animal]())
 
 # This should generate an error because Consumer is contravariant.
 accepts_consumer_animal(Consumer[Dog]())
-
-
-def accepts_producer_pep695[T_inner, F: Producer[T_inner]](value: F[Animal]) -> None:
-    pass
-
-
-def accepts_box_pep695[T_inner, F: Box[T_inner]](value: F[Animal]) -> None:
-    pass
-
-
-def accepts_consumer_pep695[T_inner, F: Consumer[T_inner]](value: F[Dog]) -> None:
-    pass
-
-
-def accepts_consumer_animal_pep695[T_inner, F: Consumer[T_inner]](value: F[Animal]) -> None:
-    pass
-
-
-accepts_producer_pep695(Producer[Dog]())
-
-# This should generate an error because Box is invariant.
-accepts_box_pep695(Box[Dog]())
-
-accepts_consumer_pep695(Consumer[Animal]())
-
-# This should generate an error because Consumer is contravariant.
-accepts_consumer_animal_pep695(Consumer[Dog]())

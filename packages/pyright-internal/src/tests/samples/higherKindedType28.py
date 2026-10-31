@@ -4,7 +4,7 @@
 from collections.abc import Collection
 from collections import Counter
 
-def filter_and_count_dups[T, C: Collection[T]](c: C[T]) -> tuple[C[T], Counter[T]]:
+def filter_and_count_dups[T, C[X]: Collection[X]](c: C[T]) -> tuple[C[T], Counter[T]]:
     seen: set[T] = set()
     ret_list: list[T] = []
     ret_counter = Counter[T]()

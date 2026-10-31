@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar, reveal_type
-
-A = TypeVar("A")
-B = TypeVar("B")
+from typing import reveal_type
 
 
-class Array(Generic[A]):
+class Array[A]:
     pass
 
 
-class ChunkedArray(Generic[A]):
+class ChunkedArray[A]:
     pass
 
 
-F = TypeVar("F", Array[A], ChunkedArray[A])
-
-
-def transform(value: F[A], target_type: type[B]) -> F[B]:
+def transform[A, B, F[X]: (Array[X], ChunkedArray[X])](value: F[A], target_type: type[B]) -> F[B]:
     raise NotImplementedError
 
 
@@ -28,16 +22,3 @@ reveal_type(array, expected_text="Array[str]")
 
 chunks = transform(ChunkedArray[int](), str)
 reveal_type(chunks, expected_text="ChunkedArray[str]")
-
-
-def transform_pep695[A_inner, F_pep695: (Array[A_inner], ChunkedArray[A_inner]), B_inner](
-    value: F_pep695[A_inner], target_type: type[B_inner]
-) -> F_pep695[B_inner]:
-    raise NotImplementedError
-
-
-array_pep695 = transform_pep695(Array[int](), str)
-reveal_type(array_pep695, expected_text="Array[str]")
-
-chunks_pep695 = transform_pep695(ChunkedArray[int](), str)
-reveal_type(chunks_pep695, expected_text="ChunkedArray[str]")

@@ -321,243 +321,230 @@ test('GenericType47', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedType1', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType1.py'], hktConfigOptions());
+test('HktGate1', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+    configOptions.defaultPythonVersion = pythonVersion3_13;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktGate1.py'], configOptions);
 
-    // 4 -> 2: legacy TypeVar(...) case removed.
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('HktGate2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktGate2.py'], hktConfigOptions());
+
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedType2', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType2.py'], hktConfigOptions());
+test('HktDeclaration1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktDeclaration1.py'], hktConfigOptions());
 
-    // 2 -> 1: legacy TypeVar(...) case removed.
-    TestUtils.validateResults(analysisResults, 1);
+    TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedType3', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType3.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType4', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType4.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType5', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType5.py'], hktConfigOptions());
-
-    // 2 -> 1: legacy TypeVar(...) case removed.
-    TestUtils.validateResults(analysisResults, 1);
-});
-
-test('HigherKindedType6', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType6.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType7', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType7.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 1);
-});
-
-test('HigherKindedType8', () => {
-    // Renamed from higherKindedType8Pep695.py; the legacy-only higherKindedType8.py was deleted.
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType8.py'], hktConfigOptions());
+test('HktDeclaration2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktDeclaration2.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 4);
 });
 
-test('HigherKindedType9', () => {
-    // Renamed from higherKindedType9Pep695.py; the legacy-only higherKindedType9.py was deleted.
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType9.py'], hktConfigOptions());
+test('HktDeclaration3', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktDeclaration3.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HktArity1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktArity1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HktArity2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktArity2.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 3);
+});
+
+test('HktBound1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktBound1.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 4);
 });
 
-test('HigherKindedType10', () => {
-    // Renamed from higherKindedType10Pep695.py; the legacy-only higherKindedType10.py was deleted.
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType10.py'], hktConfigOptions());
+test('HktBound2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktBound2.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType11', () => {
-    // Renamed from higherKindedType11Pep695.py; the legacy-only higherKindedType11.py was deleted.
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType11.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 1);
-});
-
-test('HigherKindedType12', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType12.py'], hktConfigOptions());
-
-    // 4 -> 2: legacy TypeVar(...) cases removed.
-    TestUtils.validateResults(analysisResults, 2);
-});
-
-test('HigherKindedType13', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType13.py'], hktConfigOptions());
-
-    // 8 -> 4: legacy TypeVar(...) cases removed.
     TestUtils.validateResults(analysisResults, 4);
 });
 
-test('HigherKindedType14', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType14.py'], hktConfigOptions());
+test('HktBound3', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktBound3.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType15', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType15.py'], hktConfigOptions());
-
-    // 2 -> 1: legacy TypeVar(...) case removed.
     TestUtils.validateResults(analysisResults, 1);
 });
 
-test('HigherKindedType16', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType16.py'], hktConfigOptions());
+test('HktBound4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktBound4.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedType17', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType17.py'], hktConfigOptions());
+test('HktBound5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktBound5.py'], hktConfigOptions());
 
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType18', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType18.py'], hktConfigOptions());
-
-    // 3 -> 2: legacy TypeVar(...) case removed.
-    TestUtils.validateResults(analysisResults, 2);
-});
-
-test('HigherKindedType19', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType19.py'], hktConfigOptions());
-
-    // 2 -> 1: legacy TypeVar(...) case removed.
     TestUtils.validateResults(analysisResults, 1);
 });
 
-test('HigherKindedType20', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType20.py'], hktConfigOptions());
+test('HktDefault1', () => {
+    const configOptions = hktConfigOptions();
+    configOptions.diagnosticRuleSet.reportMissingTypeArgument = 'error';
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktDefault1.py'], configOptions);
 
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedType21', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType21.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType22', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType22.py'], hktConfigOptions());
+test('HktVariance1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktVariance1.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedType23', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType23.py'], hktConfigOptions());
+test('HktVariance2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktVariance2.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HktApplication1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktApplication1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 4);
+});
+
+test('HktApplication2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktApplication2.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 0);
 });
 
-test('HigherKindedType24', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType24.py'], hktConfigOptions());
+test('HktUnification1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification1.py'], hktConfigOptions());
 
-    // 3 -> 2: implicit-spelling variant (find_one_2) removed.
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HktUnification2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification2.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktUnification3', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification3.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktUnification4', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification4.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktUnification5', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification5.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktUnification6', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification6.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HktUnification7', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification7.py'], hktConfigOptions());
+
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedType25', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType25.py'], hktConfigOptions());
+test('HktUnification8', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUnification8.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 5);
 });
 
-test('HigherKindedType26', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType26.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 3);
-});
-
-test('HigherKindedType27', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType27.py'], hktConfigOptions());
+test('HktPartial1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPartial1.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedType28', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType28.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType29', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType29.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType30', () => {
-    const configOptions = hktConfigOptions();
-    configOptions.diagnosticRuleSet.reportMissingTypeArgument = 'error';
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType30.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 0);
-});
-
-test('HigherKindedType31', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedType31.py'], hktConfigOptions());
-
-    TestUtils.validateResults(analysisResults, 4);
-});
-
-test('HigherKindedTypeGate1', () => {
-    const configOptions = new ConfigOptions(Uri.empty());
-    configOptions.defaultPythonVersion = pythonVersion3_13;
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeGate1.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 3);
-});
-
-test('HigherKindedTypeGate2', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeGate2.py'], hktConfigOptions());
+test('HktPartial2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPartial2.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedTypeUsage1', () => {
-    const configOptions = hktConfigOptions();
-    configOptions.diagnosticRuleSet.reportInvalidTypeVarUse = 'error';
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeUsage1.py'], configOptions);
-
-    TestUtils.validateResults(analysisResults, 2);
-});
-
-test('HigherKindedTypeInherit1', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeInherit1.py'], hktConfigOptions());
+test('HktInherit1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktInherit1.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 1);
 });
 
-test('HigherKindedTypePartial1', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypePartial1.py'], hktConfigOptions());
+test('HktNarrow1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktNarrow1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktClass1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktClass1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktUsage1', () => {
+    const configOptions = hktConfigOptions();
+    configOptions.diagnosticRuleSet.reportInvalidTypeVarUse = 'error';
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktUsage1.py'], configOptions);
 
     TestUtils.validateResults(analysisResults, 2);
 });
 
-test('HigherKindedTypeNarrow1', () => {
-    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeNarrow1.py'], hktConfigOptions());
+test('HktPatternArrow1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternArrow1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktPatternArrow2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternArrow2.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktPatternBidict1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternBidict1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktPatternFacade1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternFacade1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HktPatternFacade2', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternFacade2.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
+test('HktPatternFromkeys1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['hktPatternFromkeys1.py'], hktConfigOptions());
 
     TestUtils.validateResults(analysisResults, 0);
 });

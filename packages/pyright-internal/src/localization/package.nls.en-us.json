@@ -1430,6 +1430,11 @@
             "comment": ["{Locked='ParamSpec'}", "'variadic' means that it accepts a variable number of arguments"]
         },
         "typeParameterConstraintTuple": "Type parameter constraint must be a tuple of two or more types",
+        "typeParameterConstructorIllegal": "Type constructor parameter syntax requires Python 3.16 or newer",
+        "typeParameterConstructorNotAllowed": {
+            "message": "Inner type parameters cannot be used with a variadic type parameter or ParamSpec",
+            "comment": ["{Locked='ParamSpec'}", "'variadic' means that it accepts a variable number of arguments"]
+        },
         "typeParameterExistingTypeParameter": "Type parameter \"{name}\" is already in use",
         "typeParameterNotDeclared": "Type parameter \"{name}\" is not included in the type parameter list for \"{container}\"",
         "typeParametersMissing": "At least one type parameter must be specified",
@@ -1448,6 +1453,8 @@
             "message": "TypeVar bound type cannot be generic",
             "comment": ["{Locked='TypeVar'}", "A generic type is a parameterized type, for example a container where the generic type parameter specifies the type of elements in the container"]
         },
+        "typeVarConstructorInnerParamUnusedBound": "Inner type parameter \"{param}\" must be used in the bound for type constructor \"{name}\"",
+        "typeVarConstructorInnerParamUnusedConstraint": "Inner type parameter \"{param}\" must be used in the constraint for type constructor \"{name}\"",
         "typeVarConstraintGeneric": {
             "message": "TypeVar constraint type cannot be generic",
             "comment": ["{Locked='TypeVar'}", "A generic type is a parameterized type, for example a container where the generic type parameter specifies the type of elements in the container"]

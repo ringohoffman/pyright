@@ -1091,6 +1091,9 @@ export namespace Localizer {
                 getRawString('Diagnostic.typeNotSupportUnaryOperatorBidirectional')
             );
         export const typeParameterBoundNotAllowed = () => getRawString('Diagnostic.typeParameterBoundNotAllowed');
+        export const typeParameterConstructorIllegal = () => getRawString('Diagnostic.typeParameterConstructorIllegal');
+        export const typeParameterConstructorNotAllowed = () =>
+            getRawString('Diagnostic.typeParameterConstructorNotAllowed');
         export const typeParameterConstraintTuple = () => getRawString('Diagnostic.typeParameterConstraintTuple');
         export const typeParameterExistingTypeParameter = () =>
             new ParameterizedString<{ name: string }>(getRawString('Diagnostic.typeParameterExistingTypeParameter'));
@@ -1111,6 +1114,14 @@ export namespace Localizer {
             );
         export const typeVarBoundAndConstrained = () => getRawString('Diagnostic.typeVarBoundAndConstrained');
         export const typeVarBoundGeneric = () => getRawString('Diagnostic.typeVarBoundGeneric');
+        export const typeVarConstructorInnerParamUnusedBound = () =>
+            new ParameterizedString<{ param: string; name: string }>(
+                getRawString('Diagnostic.typeVarConstructorInnerParamUnusedBound')
+            );
+        export const typeVarConstructorInnerParamUnusedConstraint = () =>
+            new ParameterizedString<{ param: string; name: string }>(
+                getRawString('Diagnostic.typeVarConstructorInnerParamUnusedConstraint')
+            );
         export const typeVarConstraintGeneric = () => getRawString('Diagnostic.typeVarConstraintGeneric');
         export const typeVarDefaultBoundMismatch = () => getRawString('Diagnostic.typeVarDefaultBoundMismatch');
         export const typeVarDefaultConstraintMismatch = () =>

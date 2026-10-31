@@ -26,6 +26,7 @@ import {
     pythonVersion3_13,
     pythonVersion3_14,
     pythonVersion3_15,
+    pythonVersion3_16,
     pythonVersion3_3,
     pythonVersion3_5,
     pythonVersion3_6,
@@ -666,7 +667,7 @@ export class Parser {
         return TypeParameterListNode.create(this._getOwnerKey(), openBracketToken, closingToken, typeVariableNodes);
     }
 
-    // type_param: ['*' | '**'] NAME [':' bound_expr] ['=' default_expr]
+    // type_param: ['*' | '**'] NAME [type_param_seq] [':' bound_expr] ['=' default_expr]
     private _parseTypeParameter(): TypeParameterNode | undefined {
         let typeParamCategory = TypeParamKind.TypeVar;
         if (this._consumeTokenIfOperator(OperatorType.Multiply)) {
@@ -686,6 +687,17 @@ export class Parser {
         let typeParams: TypeParameterListNode | undefined;
         if (this._peekTokenType() === TokenType.OpenBracket) {
             typeParams = this._parseTypeParameterList();
+
+            if (
+                !this._parseOptions.isStubFile &&
+                PythonVersion.isLessThan(this._getLanguageVersion(), pythonVersion3_16)
+            ) {
+                this._addSyntaxError(LocMessage.typeParameterConstructorIllegal(), typeParams);
+            }
+
+            if (typeParamCategory !== TypeParamKind.TypeVar) {
+                this._addSyntaxError(LocMessage.typeParameterConstructorNotAllowed(), typeParams);
+            }
         }
 
         let boundExpression: ExpressionNode | undefined;

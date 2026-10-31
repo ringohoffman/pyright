@@ -1463,6 +1463,7 @@
         },
         "typeVarConstructorInnerParamUnusedBound": "Inner type parameter \"{param}\" must be used in the bound for type constructor \"{name}\"",
         "typeVarConstructorInnerParamUnusedConstraint": "Inner type parameter \"{param}\" must be used in the constraint for type constructor \"{name}\"",
+        "typeVarConstructorReturnOnly": "Type constructor \"{name}\" appears only in the return type and cannot be solved from the arguments",
         "typeVarConstraintGeneric": {
             "message": "TypeVar constraint type cannot be generic",
             "comment": ["{Locked='TypeVar'}", "A generic type is a parameterized type, for example a container where the generic type parameter specifies the type of elements in the container"]

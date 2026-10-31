@@ -1124,6 +1124,8 @@ export namespace Localizer {
             new ParameterizedString<{ param: string; name: string }>(
                 getRawString('Diagnostic.typeVarConstructorInnerParamUnusedConstraint')
             );
+        export const typeVarConstructorReturnOnly = () =>
+            new ParameterizedString<{ name: string }>(getRawString('Diagnostic.typeVarConstructorReturnOnly'));
         export const typeVarConstraintGeneric = () => getRawString('Diagnostic.typeVarConstraintGeneric');
         export const typeVarDefaultBoundMismatch = () => getRawString('Diagnostic.typeVarDefaultBoundMismatch');
         export const typeVarDefaultConstraintMismatch = () =>

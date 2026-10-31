@@ -2987,6 +2987,10 @@ export const enum TypeVarScopeType {
     Class,
     Function,
     TypeAlias,
+
+    // An inner type parameter of a type constructor parameter (the T in F[T]).
+    // Live only within the owning parameter's bound and default expressions.
+    TypeParameter,
 }
 
 export interface TypeVarDetailsPriv {

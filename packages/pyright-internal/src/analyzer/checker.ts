@@ -2537,19 +2537,21 @@ export class Checker extends ParseTreeWalker {
         }
 
         localTypeVarUsage.forEach((usage) => {
-            // If the TypeVar is an HKT constructor (isConstructor),
-            // it is exempt from the single-use check when it appears in input parameters
-            // (e.g. `def accepts(x: F[int]) -> None`), but NOT if it appears only in
-            // return position (`paramTypeUsageCount === 0`) because a return-only
-            // constructor TypeVar is unsolvable by the caller.
-            const isConstructorTypeVar = TypeVarType.isConstructor(usage.typeVar);
-            const isExempt = usage.isExempt || (isConstructorTypeVar && usage.paramTypeUsageCount > 0);
-
-            // Report error for local type variable that appears only in the return type
-            // or appears only once in a non-exempt context.
-            const isUsedOnlyInReturnType = usage.returnTypeUsageCount > 0 && usage.paramTypeUsageCount === 0;
-
-            if ((usage.nodes.length === 1 && !isExempt) || (isConstructorTypeVar && isUsedOnlyInReturnType)) {
+            if (TypeVarType.isConstructor(usage.typeVar)) {
+                // A type constructor is solved from the arguments it is applied
+                // to, so a single use is meaningful. One that appears only in the
+                // return type, however, can never be solved.
+                if (usage.returnTypeUsageCount > 0 && usage.paramTypeUsageCount === 0) {
+                    this._evaluator.addDiagnostic(
+                        DiagnosticRule.reportInvalidTypeVarUse,
+                        LocMessage.typeVarConstructorReturnOnly().format({
+                            name: usage.nodes[0].d.value,
+                        }),
+                        usage.nodes[0]
+                    );
+                }
+            } else if (usage.nodes.length === 1 && !usage.isExempt) {
+                // Report error for local type variable that appears only once.
                 let altTypeText: string;
 
                 if (isTypeVarTuple(usage.typeVar)) {

@@ -25367,7 +25367,7 @@ export function createTypeEvaluator(
             } else if (scopeNode.nodeType === ParseNodeType.Function) {
                 scopeType = TypeVarScopeType.Function;
             } else if (scopeNode.nodeType === ParseNodeType.TypeParameter) {
-                scopeType = TypeVarScopeType.Function;
+                scopeType = TypeVarScopeType.TypeParameter;
             } else {
                 assert(scopeNode.nodeType === ParseNodeType.TypeAlias);
                 scopeType = TypeVarScopeType.TypeAlias;

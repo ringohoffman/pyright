@@ -547,6 +547,14 @@ test('HigherKindedTypeGate2', () => {
     TestUtils.validateResults(analysisResults, 2);
 });
 
+test('HigherKindedTypeUsage1', () => {
+    const configOptions = hktConfigOptions();
+    configOptions.diagnosticRuleSet.reportInvalidTypeVarUse = 'error';
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeUsage1.py'], configOptions);
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 

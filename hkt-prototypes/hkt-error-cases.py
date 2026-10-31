@@ -304,6 +304,33 @@ def bad_generic_mix[T, F: (BoxA[T], NonGenericConcrete)](value: F[int]) -> None:
 def rejects_type_var_tuple[*Ts](value: Ts[int]) -> None:
     ...
 
+
+# ==============================================================================
+# Error Category 14: Inner Type Parameter Not Used in Constructor Bound or Constraint
+# Diagnostic: Inner type parameter "{param}" must be used in the bound/constraint for type constructor "{name}"
+# ==============================================================================
+
+class FunctorProto[A]:
+    pass
+
+# ERROR: Inner parameter T is not used in bound FunctorProto[Any].
+# Expected diagnostic:
+#   Inner type parameter "T" must be used in the bound for type constructor "F"
+def bad_unused_inner_bound[A, F[T]: FunctorProto[Any]](xs: F[A]) -> F[A]:
+    ...
+
+# ERROR: Inner parameter K is not used in bound dict[str, V].
+# Expected diagnostic:
+#   Inner type parameter "K" must be used in the bound for type constructor "F"
+def bad_unused_inner_multi[A, B, F[K, V]: dict[str, V]](xs: F[A, B]) -> None:
+    ...
+
+# ERROR: Inner parameter T is not used in constraint set[Any].
+# Expected diagnostic:
+#   Inner type parameter "T" must be used in the constraint for type constructor "F"
+def bad_unused_inner_constraint[A, F[T]: (list[T], set[Any])](xs: F[A]) -> None:
+    ...
+
 # ERROR: ParamSpec (**P) cannot be subscripted as a type constructor.
 # Expected diagnostic:
 #   ParamSpec is not allowed in this context (reportInvalidTypeForm)

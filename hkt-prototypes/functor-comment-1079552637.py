@@ -26,7 +26,7 @@ from typing import Any, Protocol, overload, reveal_type, runtime_checkable
 
 # 1. Base Functor class with inherited .map()
 class Functor[A]:
-    def map[B, F[T]: Functor[Any]](self: F[A], f: Callable[[A], B]) -> F[B]:
+    def map[B, F[T]: Functor[T]](self: F[A], f: Callable[[A], B]) -> F[B]:
         cls = type(self)
         if isinstance(self, list):
             return cls([f(x) for x in self])  # type: ignore
@@ -69,7 +69,7 @@ reveal_type(res, expected_text="SpecialList[str]")
 
 # 3. Universal standalone fmap function
 @overload
-def fmap[A, B, F[T]: Mappable[Any]](f: Callable[[A], B], xs: F[A]) -> F[B]:
+def fmap[A, B, F[T]: Mappable[T]](f: Callable[[A], B], xs: F[A]) -> F[B]:
     """Prefers the custom .map() method if the container provides one."""
     ...
 

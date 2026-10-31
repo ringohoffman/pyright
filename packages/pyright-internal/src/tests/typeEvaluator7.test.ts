@@ -555,6 +555,24 @@ test('HigherKindedTypeUsage1', () => {
     TestUtils.validateResults(analysisResults, 2);
 });
 
+test('HigherKindedTypeInherit1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeInherit1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 1);
+});
+
+test('HigherKindedTypePartial1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypePartial1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 2);
+});
+
+test('HigherKindedTypeNarrow1', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['higherKindedTypeNarrow1.py'], hktConfigOptions());
+
+    TestUtils.validateResults(analysisResults, 0);
+});
+
 test('Protocol1', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['protocol1.py']);
 

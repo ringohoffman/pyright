@@ -454,6 +454,7 @@ export namespace TypeServerProtocol {
         Overloaded, // Functions with multiple @overload signatures
         Synthesized, // Types that are synthesized by the type checker
         TypeReference, // Reference by ID for deduplication
+        OverloadResult, // Complete witnesses for a materialization-ambiguous call
     }
 
     /**
@@ -1260,6 +1261,12 @@ export namespace TypeServerProtocol {
         readonly typeReferenceId: number;
     }
 
+    export interface OverloadResultType extends TypeBase<TypeKind.OverloadResult> {
+        readonly candidates: Type[];
+        readonly baselineType: Type;
+        readonly uncertaintyKind: 'any' | 'unknown';
+    }
+
     export type Type =
         | BuiltInType
         | DeclaredType
@@ -1269,6 +1276,7 @@ export namespace TypeServerProtocol {
         | ModuleType
         | TypeVarType
         | OverloadedType
+        | OverloadResultType
         | SynthesizedType
         | TypeReferenceType;
 

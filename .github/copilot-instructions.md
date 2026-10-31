@@ -2,6 +2,26 @@
 
 Pyright is a static type checker for Python, written in TypeScript. It ships as an npm CLI (`pyright`), an LSP language server (`pyright-langserver`), and a VS Code extension (`vscode-pyright`).
 
+## Issue Agents
+
+Use `pyright-issue-reviewer` to investigate an issue and draft a maintainer response without editing,
+executing commands, or publishing. Copilot may select the reviewer automatically for issue-analysis tasks.
+Manually select `pyright-issue-fixer` to investigate and implement a justified fix with
+regression coverage. Supply the issue URL or number, repro, and relevant configuration.
+Both agents use `.github/skills/pyright-issue-analysis/SKILL.md` for the shared evidence-based workflow.
+For example: "Use pyright-issue-reviewer to analyze <issue URL> and draft a response" or
+"Use pyright-issue-fixer to fix <issue URL>; prepare a patch and PR description, but do not publish."
+Posting comments, committing/pushing, or creating a PR requires explicit authorization; reviewer mode never publishes.
+
+## PR Reviews
+
+Select `pyright-pr-review` for the coordinated review workflow described in
+[PR review agents](../docs/pr-review-agents.md). Its five independent specialists include the ordinary
+`pyright-pr-monkey` adversarial reviewer and a dedicated `pyright-pr-safety-reviewer` using the
+[PR type-specification review skill](skills/pyright-pr-typespec-review/SKILL.md) for an additional investigation and example-led feedback.
+The skill also supports standalone assessments and QA callers with their own execution and result contracts.
+Specialists return evidence and drafts; the coordinator owns the final assessment and explicitly authorized publication.
+
 ## Build and Test
 
 ```bash
